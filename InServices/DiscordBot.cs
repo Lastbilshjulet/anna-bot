@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Threading.Tasks;
 using anna_bot.InServices.Models;
 using anna_bot.OutServices;
@@ -12,21 +13,25 @@ namespace anna_bot.InServices;
 
 public class DiscordBot(
     IServiceProvider serviceProvider,
+    IOptions<DiscordConfiguration> discordConfig,
     DiscordSocketClient client,
     InteractionService interactionService,
     IYoutubeService youtubeService,
-    IOptions<DiscordConfiguration> discordConfig,
     ILogger<DiscordBot> logger)
 {
     public async Task RunAsync()
     {
-        logger.LogInformation("Starting anna-bot...");
+        logger.LogInformation("Starting {BotName}...", discordConfig.Value.BotName);
         
+        client.Ready += OnReady;
         client.InteractionCreated += HandleInteraction;
+        client.MessageDeleted += OnMessageDeleted;
         client.Log += Log;
 
         await client.LoginAsync(TokenType.Bot, discordConfig.Value.Token);
         await client.StartAsync();
+        
+        logger.LogInformation("{BotName} is connected to guilds {Guilds}", discordConfig.Value.BotName, string.Join(", ", client.Guilds.Select(x => x.Name)));
 
         await Task.Delay(-1);
     }
@@ -37,11 +42,47 @@ public class DiscordBot(
         await interactionService.ExecuteCommandAsync(ctx, serviceProvider);
     }
 
+    private async Task OnReady()
+    {
+        try
+        {
+            logger.LogInformation("{BotName} is ready!", discordConfig.Value.BotName);
+        
+            await interactionService.AddModulesAsync(typeof(Program).Assembly, serviceProvider);
+            await interactionService.RegisterCommandsGloballyAsync();
+            await interactionService.RegisterCommandsToGuildAsync(discordConfig.Value.GuildId);
+            //await RemoveGlobalCommands();
+            //await RemoveGuildCommands();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "{BotName} failed to be ready", discordConfig.Value.BotName);
+        }
+    }
+
+    private async Task RemoveGuildCommands()
+    {
+        var commands = await client.GetGuild(discordConfig.Value.GuildId).GetApplicationCommandsAsync();
+        foreach (var command in commands)
+        {
+            await command.DeleteAsync();
+            logger.LogInformation("Deleted guild command: {CommandName} from {BotName}, and {Guild}", command.Name, discordConfig.Value.BotName, discordConfig.Value.GuildId);
+        }
+    }
+
+    private async Task RemoveGlobalCommands()
+    {
+        var commands = await client.GetGlobalApplicationCommandsAsync();
+        foreach (var command in commands)
+        {
+            await command.DeleteAsync();
+            logger.LogInformation("Deleted global command: {CommandName} for {BotName}", command.Name, discordConfig.Value.BotName);
+        }
+    }
+
     private Task Log(LogMessage msg)
     {
-#pragma warning disable CA2254
-        logger.Log(TranslateLogLevel(msg.Severity), msg.Message);
-#pragma warning restore CA2254
+        logger.Log(TranslateLogLevel(msg.Severity), "{BotName}: {ErrorMessage}", discordConfig.Value.BotName, msg.Message);
         return Task.CompletedTask;
     }
 
@@ -57,5 +98,23 @@ public class DiscordBot(
             LogSeverity.Verbose => LogLevel.Trace,
             _ => throw new ArgumentException($"Unknown log severity {severity}")
         };
+    }
+
+    private Task OnMessageDeleted(Cacheable<IMessage, ulong> message, Cacheable<IMessageChannel, ulong> channel)
+    {
+        if (message.HasValue && message.Value.Author.Id != discordConfig.Value.ClientId)
+        {
+            logger.LogInformation("Message deleted: {MessageContent} by {Author} from {Channel} ({ChannelId})", 
+                message.Value.Content, message.Value.Author.Username, message.Value.Channel.Name, message.Value.Channel.Id);
+            return Task.CompletedTask;
+        }
+
+        if (channel.HasValue)
+        {
+            logger.LogInformation("Message not in cache, deleted from channel: {ChannelName} ({ChannelId})", 
+                channel.Value.Name, channel.Value.Id);
+        }
+        
+        return Task.CompletedTask;
     }
 }
