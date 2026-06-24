@@ -57,3 +57,5 @@ TestResult.xml
 nunit-*.xml
 
 .idea/
+/anna-bot.sln.DotSettings.user
+logs/
