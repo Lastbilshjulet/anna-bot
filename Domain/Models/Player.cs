@@ -25,11 +25,13 @@ public class Player
     public ulong GuildId { get; }
     public bool IsPlaying { get; private set; }
     public Song? CurrentSong { get; private set; }
+    public float Volume { get; set; }
     
     public Player(ISongDbService songDbService, MusicConfiguration musicConfiguration, ulong guildId, IAudioClient audioClient, List<Song> availableSongs)
     {
         _songDbService = songDbService;
         _musicConfiguration = musicConfiguration;
+        Volume = musicConfiguration.BaseVolume;
         GuildId = guildId;
         _audioClient = audioClient;
         _queue = new SongQueue(availableSongs);
@@ -43,6 +45,7 @@ public class Player
         _ = Task.Run(async () => {
             do
             {
+                Volume = _musicConfiguration.BaseVolume;
                 var song = Dequeue();
                 CurrentSong = song;
                 
