@@ -25,9 +25,9 @@ public class Connect(ILogger<Connect> logger, ICommandLogger<Connect> commandLog
         }
         
         var audioClient = Context.Guild.AudioClient;
-        if (audioClient != null)
+        if (audioClient == null)
         {
-            await FollowupAsync("I am already connected to a voice channel.", ephemeral: true);
+            await FollowupAsync("I am not connected to a voice channel.", ephemeral: true);
             return;
         }
 

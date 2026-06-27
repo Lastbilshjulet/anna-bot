@@ -123,12 +123,12 @@ public class Player
 
     private async Task StreamAudioFromFile(string filePath, CancellationToken cancellationToken = default)
     {
-        using var ffmpeg = CreateFFmpegStream(filePath, _musicConfiguration.BaseVolume);
+        using var ffmpeg = CreateFFmpegStream(filePath);
         await using var audioStream = _audioClient.CreatePCMStream(AudioApplication.Mixed);
 
         try
         {
-            await ffmpeg.StandardOutput.BaseStream.CopyToAsync(audioStream, cancellationToken);
+            await CopyWithVolume(ffmpeg.StandardOutput.BaseStream, audioStream, cancellationToken);
         }
         catch (OperationCanceledException ex)
         {
@@ -142,30 +142,43 @@ public class Player
         }
         finally
         {
-            try
-            {
-                await audioStream.FlushAsync(cancellationToken);
-            }
-            catch (OperationCanceledException)
-            { /* Ignore flush cancellation */ }
+            try { await audioStream.FlushAsync(CancellationToken.None); } catch { }
+            try { if (!ffmpeg.HasExited) ffmpeg.Kill(); } catch { }
+            try { await ffmpeg.WaitForExitAsync(CancellationToken.None); } catch { }
+        }
+    }
+    
+    private async Task CopyWithVolume(Stream source, Stream destination, CancellationToken cancellationToken)
+    {
+        // PCM s16le = 2 bytes per sample, 2 channels = 4 bytes per frame
+        const int bufferSize = 3840; // 48000 Hz * 2 ch * 2 bytes * 20ms
+        var buffer = new byte[bufferSize];
+        var scaled = new byte[bufferSize];
 
-            try
-            {
-                if (!ffmpeg.HasExited)
-                    ffmpeg.Kill();
+        int bytesRead;
+        while ((bytesRead = await source.ReadAsync(buffer, cancellationToken)) > 0)
+        {
+            var volume = Volume; // snapshot once per chunk to avoid tearing
 
-                await ffmpeg.WaitForExitAsync(cancellationToken);
+            // Walk through each 16-bit little-endian sample and scale it
+            for (var i = 0; i < bytesRead - 1; i += 2)
+            {
+                var sample = (short)(buffer[i] | (buffer[i + 1] << 8));
+                var scaled16 = (short)Math.Clamp(sample * volume, short.MinValue, short.MaxValue);
+                scaled[i]     = (byte)(scaled16 & 0xFF);
+                scaled[i + 1] = (byte)((scaled16 >> 8) & 0xFF);
             }
-            catch { /* Ignore cleanup errors */ }
+
+            await destination.WriteAsync(scaled.AsMemory(0, bytesRead), cancellationToken);
         }
     }
 
-    private static Process CreateFFmpegStream(string filePath, float volume)
+    private static Process CreateFFmpegStream(string filePath)
     {
         var processStartInfo = new ProcessStartInfo
         {
             FileName = "ffmpeg",
-            Arguments = $"-hide_banner -i \"{filePath}\" -filter:a \"volume={volume.ToString(CultureInfo.InvariantCulture)}\" -ac 2 -f s16le -ar 48000 pipe:1",
+            Arguments = $"-hide_banner -i \"{filePath}\" -ac 2 -f s16le -ar 48000 pipe:1",
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = false
