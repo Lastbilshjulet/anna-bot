@@ -18,6 +18,8 @@ public partial class Song
     public bool Autoplay { get; set; } = true;
     public int TimesAutoPlayed { get; set; }
     public bool IsAutoPlayed { get; set; }
+    
+    public string FormattedDuration() => Duration.ToString(Duration.Hours > 0 ? @"h\:mm\:ss" : @"m\:ss");
 
     public string CleanTitle()
     {
