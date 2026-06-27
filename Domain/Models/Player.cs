@@ -13,40 +13,24 @@ using Microsoft.Extensions.Logging;
 
 namespace anna_bot.Domain.Models;
 
-public class Player
+public class Player(
+    ISongDbService songDbService,
+    MusicConfiguration musicConfiguration,
+    ulong guildId,
+    IAudioClient audioClient,
+    List<Song> availableSongs,
+    ILogger<Player> logger)
 {
-    private readonly ISongDbService _songDbService;
-    private readonly MusicConfiguration _musicConfiguration;
-    private readonly SongQueue _queue;
+    private readonly SongQueue _queue = new(availableSongs);
     private readonly Lock _lock = new();
-    private readonly IAudioClient _audioClient;
-    private readonly ILogger<Player> _logger;
     private CancellationTokenSource? _currentSongCts;
     private SocketVoiceChannel? _voiceChannel;
     private SocketTextChannel? _textChannel;
 
-    public ulong GuildId { get; }
+    public ulong GuildId { get; } = guildId;
     public bool IsPlaying { get; private set; }
     public Song? CurrentSong { get; private set; }
-    public float Volume { get; set; }
-    
-    public Player(
-        ISongDbService songDbService,
-        MusicConfiguration musicConfiguration,
-        ulong guildId,
-        IAudioClient audioClient,
-        List<Song> availableSongs,
-        ILogger<Player> logger)
-    {
-        _songDbService = songDbService;
-        _musicConfiguration = musicConfiguration;
-        _audioClient = audioClient;
-        _queue = new SongQueue(availableSongs);
-        _logger = logger;
-        
-        Volume = musicConfiguration.BaseVolume;
-        GuildId = guildId;
-    }
+    public float Volume { get; set; } = musicConfiguration.BaseVolume;
 
     /*
         TODO: Maybe crazy idea, but loop check against how many listeners:
@@ -61,10 +45,10 @@ public class Player
         _ = Task.Run(async () => {
             do
             {
-                Volume = _musicConfiguration.BaseVolume;
+                Volume = musicConfiguration.BaseVolume;
                 if (_voiceChannel.ConnectedUsers.Count <= 1)
                 {
-                    _logger.LogInformation("No more listeners found");
+                    logger.LogInformation("No more listeners found");
                     // TODO: Pause/Stop here maybe?
                     await MessageHelper.EmbedSendMessageAsync(_textChannel!, "No more listeners found, stopping.", null);
                     break;
@@ -75,16 +59,16 @@ public class Player
 
                 if (song == null)
                 {
-                    _logger.LogInformation("No more songs found to play.");
+                    logger.LogInformation("No more songs found to play.");
                     // TODO: How to leave from here? Need to reset unplayed queue somehow
                     await MessageHelper.EmbedSendMessageAsync(_textChannel!, "No more songs found to play.", null);
                     break;
                 }
                 
-                var songPath = song.GetFullPath(_musicConfiguration.Path);
+                var songPath = song.GetFullPath(musicConfiguration.Path);
                 if (!File.Exists(songPath))
                 {
-                    _logger.LogError("Song file could not be fond on {Path}", songPath);
+                    logger.LogError("Song file could not be fond on {Path}", songPath);
                     break;
                 }
                 
@@ -104,16 +88,16 @@ public class Player
                         await MessageHelper.EmbedSendMessageAsync(_textChannel!, title, song);
                     }
                     
-                    _songDbService.IncreasePlayAmount(song);
+                    songDbService.IncreasePlayAmount(song);
                     await StreamAudioFromFile(songPath, _currentSongCts.Token);
                 }
                 catch (OperationCanceledException)
                 {
-                    _logger.LogInformation("Skipped song: {Title}", song.Title);
+                    logger.LogInformation("Skipped song: {Title}", song.Title);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error during audio streaming of song {Title}", song.Title);
+                    logger.LogError(ex, "Error during audio streaming of song {Title}", song.Title);
                 }
                 finally
                 {
@@ -161,7 +145,7 @@ public class Player
     private async Task StreamAudioFromFile(string filePath, CancellationToken cancellationToken = default)
     {
         using var ffmpeg = CreateFFmpegStream(filePath);
-        await using var audioStream = _audioClient.CreatePCMStream(AudioApplication.Mixed);
+        await using var audioStream = audioClient.CreatePCMStream(AudioApplication.Mixed);
 
         try
         {
@@ -169,12 +153,12 @@ public class Player
         }
         catch (OperationCanceledException ex)
         {
-            _logger.LogWarning(ex, "Audio streaming was cancelled");
+            logger.LogWarning(ex, "Audio streaming was cancelled");
             throw;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during audio streaming");
+            logger.LogError(ex, "Error during audio streaming");
             throw;
         }
         finally

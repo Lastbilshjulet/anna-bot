@@ -54,6 +54,8 @@ public class SongDbService(
         else
             dbSong.TimesPlayed++;
         
+        dbSong.UpdatedAt = DateTime.Now;
+        
         context.SaveChanges();
         
         return mapper.ToDomain(dbSong);
