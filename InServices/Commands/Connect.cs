@@ -20,14 +20,14 @@ public class Connect(ILogger<Connect> logger, ICommandLogger<Connect> commandLog
 
         if (voiceChannel == null)
         {
-            await FollowupAsync("You are not connected to a voice channel.", ephemeral: true);
+            await MessageHelper.EmbedFollowup(Context, "You are not connected to a voice channel.", true);
             return;
         }
         
         var audioClient = Context.Guild.AudioClient;
-        if (audioClient == null)
+        if (audioClient != null)
         {
-            await FollowupAsync("I am not connected to a voice channel.", ephemeral: true);
+            await MessageHelper.EmbedFollowup(Context, "I am already connected to a voice channel.", true);
             return;
         }
 
@@ -36,12 +36,12 @@ public class Connect(ILogger<Connect> logger, ICommandLogger<Connect> commandLog
             logger.LogInformation("Connecting to voice channel {VoiceChannelName} ({VoiceChannelId})", voiceChannel.Name, voiceChannel.Id);
             await voiceChannel.ConnectAsync();
 
-            await FollowupAsync($"Connected to {voiceChannel.Name}", ephemeral: true);
+            await MessageHelper.EmbedFollowup(Context, $"Connected to {voiceChannel.Name}", true);
         }
         catch (Exception ex)
         {
             logger.LogError("Error connecting to voice channel: {ExMessage}", ex.Message);
-            await FollowupAsync("Failed to connect to your voice channel.", ephemeral: true);
+            await MessageHelper.EmbedFollowup(Context, "Failed to connect to your voice channel.", true);
         }
     }
 }

@@ -28,7 +28,7 @@ public class Play(
 
         if (voiceChannel == null)
         {
-            await FollowupAsync("You are not connected to a voice channel.", ephemeral: true);
+            await MessageHelper.EmbedFollowup(Context, "You are not connected to a voice channel.", true);
             return;
         }
         
@@ -45,7 +45,7 @@ public class Play(
             catch (Exception ex)
             {
                 logger.LogError("Error connecting to voice channel: {ExMessage}", ex.Message);
-                await FollowupAsync("Failed to connect to your voice channel.", ephemeral: true);
+                await MessageHelper.EmbedFollowup(Context, "Failed to connect to your voice channel.", true);
                 return;
             }
         }
@@ -56,19 +56,19 @@ public class Play(
             if (fetchedSong == null)
             {
                 logger.LogInformation("No result found from query {Query}", query);
-                await FollowupAsync($"No result found from query {query}", ephemeral: true);
+                await MessageHelper.EmbedFollowup(Context, $"No result found from query {query}", true);
                 return;
             }
 
             logger.LogInformation("Adding song {SongName} to the queue in {VoiceChannelName} ({VoiceChannelId})", fetchedSong.Title, voiceChannel.Name, voiceChannel.Id);
             playerHolder.AddSong(Context.Guild.Id, fetchedSong);
             
-            await FollowupAsync($"Added {fetchedSong.Title} to the queue.");
+            await MessageHelper.EmbedFollowup(Context, $"Added {fetchedSong.Title} to the queue.", true);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error fetching and playing song");
-            await FollowupAsync("Failed to fetch or play song.", ephemeral: true);
+            await MessageHelper.EmbedFollowup(Context, "Failed to fetch or play song.", true);
         }
     }
 }

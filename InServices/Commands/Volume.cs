@@ -1,5 +1,4 @@
-﻿using System;
-using System.Threading.Tasks;
+﻿using System.Threading.Tasks;
 using anna_bot.Domain;
 using anna_bot.InServices.Commands.Helpers;
 using Discord.Interactions;
@@ -24,7 +23,7 @@ public class Volume(
 
         if (voiceChannel == null)
         {
-            await FollowupAsync("You are not connected to a voice channel.", ephemeral: true);
+            await MessageHelper.EmbedFollowup(Context, "You are not connected to a voice channel.", true);
             return;
         }
 
@@ -32,7 +31,7 @@ public class Volume(
         if (player is not { IsPlaying: true })
         {
             logger.LogError("Player not found for guild {GuildId}", Context.Guild.Id);
-            await FollowupAsync("No music playing.", ephemeral: true);
+            await MessageHelper.EmbedFollowup(Context, "No music playing.", true);
             return;
         }
 
@@ -41,11 +40,11 @@ public class Volume(
 
         if (!volume.HasValue)
         {
-            await FollowupAsync($"Volume is set to: {currentlySetVolume * 100}%");
+            await MessageHelper.EmbedFollowup(Context, $"Volume is set to: {currentlySetVolume * 100}%", true);
             return;
         }
         
         player.Volume = volume.Value / 100;
-        await FollowupAsync($"Volume is now set to: {volume.Value}%");
+        await MessageHelper.EmbedFollowup(Context, $"Volume is now set to: {volume.Value}%", true);
     }
 }
