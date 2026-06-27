@@ -1,13 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using anna_bot.Domain.Models.Configurations;
+using anna_bot.InServices.Commands.Helpers;
 using anna_bot.OutServices.UseCases;
 using Discord.Audio;
+using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 
 namespace anna_bot.Domain.Models;
@@ -19,84 +20,120 @@ public class Player
     private readonly SongQueue _queue;
     private readonly Lock _lock = new();
     private readonly IAudioClient _audioClient;
-    private readonly ILogger _logger;
+    private readonly ILogger<Player> _logger;
     private CancellationTokenSource? _currentSongCts;
+    private SocketVoiceChannel? _voiceChannel;
+    private SocketTextChannel? _textChannel;
 
     public ulong GuildId { get; }
     public bool IsPlaying { get; private set; }
     public Song? CurrentSong { get; private set; }
     public float Volume { get; set; }
     
-    public Player(ISongDbService songDbService, MusicConfiguration musicConfiguration, ulong guildId, IAudioClient audioClient, List<Song> availableSongs)
+    public Player(
+        ISongDbService songDbService,
+        MusicConfiguration musicConfiguration,
+        ulong guildId,
+        IAudioClient audioClient,
+        List<Song> availableSongs,
+        ILogger<Player> logger)
     {
         _songDbService = songDbService;
         _musicConfiguration = musicConfiguration;
-        Volume = musicConfiguration.BaseVolume;
-        GuildId = guildId;
         _audioClient = audioClient;
         _queue = new SongQueue(availableSongs);
-
-        var loggerFactory = new LoggerFactory();
-        _logger = loggerFactory.CreateLogger<Player>();
+        _logger = logger;
+        
+        Volume = musicConfiguration.BaseVolume;
+        GuildId = guildId;
     }
 
+    /*
+        TODO: Maybe crazy idea, but loop check against how many listeners:
+        If only bot, play elevator music. 
+        When someone joins, within a couple seconds it should keep autoplay rolling
+    */
     private void PlaySong()
     {
+        if (_textChannel == null || _voiceChannel == null)
+            return;
+        
         _ = Task.Run(async () => {
             do
             {
                 Volume = _musicConfiguration.BaseVolume;
+                if (_voiceChannel.ConnectedUsers.Count <= 1)
+                {
+                    _logger.LogInformation("No more listeners found");
+                    // TODO: Pause/Stop here maybe?
+                    await MessageHelper.EmbedSendMessageAsync(_textChannel!, "No more listeners found, stopping.", null);
+                    break;
+                }
+                
                 var song = Dequeue();
                 CurrentSong = song;
-                
-                if (song != null)
+
+                if (song == null)
                 {
-                    var songPath = song.GetFullPath(_musicConfiguration.Path);
-                    if (!File.Exists(songPath))
-                    {
-                        _logger.LogError("Song file could not be fond on {Path}", songPath);
-                        break;
-                    }
-                 
-                    try
-                    {
-                        IsPlaying = true;
+                    _logger.LogInformation("No more songs found to play.");
+                    // TODO: How to leave from here? Need to reset unplayed queue somehow
+                    await MessageHelper.EmbedSendMessageAsync(_textChannel!, "No more songs found to play.", null);
+                    break;
+                }
+                
+                var songPath = song.GetFullPath(_musicConfiguration.Path);
+                if (!File.Exists(songPath))
+                {
+                    _logger.LogError("Song file could not be fond on {Path}", songPath);
+                    break;
+                }
+                
+                try
+                {
+                    IsPlaying = true;
 
-                        lock (_lock)
-                        {
-                            _currentSongCts?.Dispose();
-                            _currentSongCts = new CancellationTokenSource();
-                        }
+                    lock (_lock)
+                    {
+                        _currentSongCts?.Dispose();
+                        _currentSongCts = new CancellationTokenSource();
+                    }
 
-                        _songDbService.IncreasePlayAmount(song);
-                        await StreamAudioFromFile(songPath, _currentSongCts.Token);
-                    }
-                    catch (OperationCanceledException)
+                    if (_textChannel != null)
                     {
-                        _logger.LogInformation("Skipped song: {Title}", song.Title);
+                        var title = song.IsAutoPlayed ? "Auto-Playing..." : "Now Playing...";
+                        await MessageHelper.EmbedSendMessageAsync(_textChannel!, title, song);
                     }
-                    catch (Exception ex)
+                    
+                    _songDbService.IncreasePlayAmount(song);
+                    await StreamAudioFromFile(songPath, _currentSongCts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogInformation("Skipped song: {Title}", song.Title);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error during audio streaming of song {Title}", song.Title);
+                }
+                finally
+                {
+                    lock (_lock)
                     {
-                        _logger.LogError(ex, "Error during audio streaming of song {Title}", song.Title);
+                        _currentSongCts?.Dispose();
+                        _currentSongCts = null;
                     }
-                    finally
-                    {
-                        lock (_lock)
-                        {
-                            _currentSongCts?.Dispose();
-                            _currentSongCts = null;
-                        }
-                        CurrentSong = null;
-                    }
+                    CurrentSong = null;
                 }
                 IsPlaying = false;
-            } while (_queue.Count >= 1);
+            } while (true);
         });
     }
 
-    public void Enqueue(Song song)
+    public void Enqueue(Song song, SocketTextChannel textChannel, SocketVoiceChannel voiceChannel)
     {
         _queue.Enqueue(song);
+        _textChannel = textChannel;
+        _voiceChannel = voiceChannel;
         if (_queue.Count == 1 && !IsPlaying)
         {
             PlaySong();
@@ -105,7 +142,7 @@ public class Player
 
     private Song? Dequeue()
     {
-        return _queue.Count == 0 ? null : _queue.Dequeue();
+        return _queue.Dequeue();
     }
 
     public void Skip()
@@ -142,9 +179,9 @@ public class Player
         }
         finally
         {
-            try { await audioStream.FlushAsync(CancellationToken.None); } catch { }
-            try { if (!ffmpeg.HasExited) ffmpeg.Kill(); } catch { }
-            try { await ffmpeg.WaitForExitAsync(CancellationToken.None); } catch { }
+            try { await audioStream.FlushAsync(CancellationToken.None); } catch { /* Ignore fail */ }
+            try { if (!ffmpeg.HasExited) ffmpeg.Kill(); } catch { /* Ignore fail */ }
+            try { await ffmpeg.WaitForExitAsync(CancellationToken.None); } catch { /* Ignore fail */ }
         }
     }
     

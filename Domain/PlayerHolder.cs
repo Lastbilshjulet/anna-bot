@@ -5,22 +5,25 @@ using anna_bot.Domain.Models;
 using anna_bot.Domain.Models.Configurations;
 using anna_bot.OutServices.UseCases;
 using Discord.Audio;
+using Discord.WebSocket;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace anna_bot.Domain;
 
-// Find better name than PlayerHolder? Holds global state for music
-public class PlayerHolder(ISongDbService songDbService, IOptions<MusicConfiguration> musicConfig)
+// Find a better name than PlayerHolder? Holds global state for music
+public class PlayerHolder(ISongDbService songDbService, IOptions<MusicConfiguration> musicConfig, ILoggerFactory loggerFactory)
 {
     private readonly ConcurrentDictionary<ulong, Player> _playerHolder = [];
     private readonly List<Song> _availableSongs = songDbService.GetAllSongs();
 
     public Player AddAndGetPlayer(ulong guildId, IAudioClient audioClient)
     {
-        return _playerHolder.GetOrAdd(guildId, new Player(songDbService, musicConfig.Value, guildId, audioClient, [.. _availableSongs]));
+        var logger = loggerFactory.CreateLogger<Player>();
+        return _playerHolder.GetOrAdd(guildId, new Player(songDbService, musicConfig.Value, guildId, audioClient, [.. _availableSongs], logger));
     }
     
-    public void AddSong(ulong guildId, Song song)
+    public void AddSong(ulong guildId, Song song, SocketTextChannel textChannel, SocketVoiceChannel voiceChannel)
     {
         var newSong = _availableSongs.All(x => x.YoutubeId != song.YoutubeId);
         if (newSong)
@@ -30,7 +33,7 @@ public class PlayerHolder(ISongDbService songDbService, IOptions<MusicConfigurat
         {
             if (player.GuildId == guildId)
             {
-                player.Enqueue(song);
+                player.Enqueue(song, textChannel, voiceChannel);
             }
             else if (newSong)
             {

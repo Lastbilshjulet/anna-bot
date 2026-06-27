@@ -12,6 +12,7 @@ public class SongQueue
     
     public int Count => _queue.Count;
     public int UnPlayedCount => _unPlayed.Count;
+    public int CombinedCount => Count + UnPlayedCount;
     public int HistoryCount => _history.Count;
     
     public SongQueue(List<Song> existingSongs)
@@ -36,6 +37,7 @@ public class SongQueue
             var song = _queue.Dequeue();
             song.IsAutoPlayed = false;
             _history.Enqueue(song);
+            _unPlayed.Remove(song);
             return song;
         }
 

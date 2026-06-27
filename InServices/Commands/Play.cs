@@ -28,7 +28,13 @@ public class Play(
 
         if (voiceChannel == null)
         {
-            await MessageHelper.EmbedFollowup(Context, "You are not connected to a voice channel.", true);
+            await MessageHelper.EmbedFollowupAsync(Context, "You are not connected to a voice channel.", true);
+            return;
+        }
+
+        if (Context.Interaction.Channel is not SocketTextChannel textChannel)
+        {
+            await MessageHelper.EmbedFollowupAsync(Context, "You are typing from an invalid text channel.", true);
             return;
         }
         
@@ -45,7 +51,7 @@ public class Play(
             catch (Exception ex)
             {
                 logger.LogError("Error connecting to voice channel: {ExMessage}", ex.Message);
-                await MessageHelper.EmbedFollowup(Context, "Failed to connect to your voice channel.", true);
+                await MessageHelper.EmbedFollowupAsync(Context, "Failed to connect to your voice channel.", true);
                 return;
             }
         }
@@ -56,19 +62,19 @@ public class Play(
             if (fetchedSong == null)
             {
                 logger.LogInformation("No result found from query {Query}", query);
-                await MessageHelper.EmbedFollowup(Context, $"No result found from query {query}", true);
+                await MessageHelper.EmbedFollowupAsync(Context, $"No result found from query {query}", true);
                 return;
             }
 
             logger.LogInformation("Adding song {SongName} to the queue in {VoiceChannelName} ({VoiceChannelId})", fetchedSong.Title, voiceChannel.Name, voiceChannel.Id);
-            playerHolder.AddSong(Context.Guild.Id, fetchedSong);
+            playerHolder.AddSong(Context.Guild.Id, fetchedSong, textChannel, voiceChannel);
             
-            await MessageHelper.EmbedFollowup(Context, $"Added {fetchedSong.Title} to the queue.", true);
+            await MessageHelper.EmbedFollowupAsync(Context, $"Added {fetchedSong.Title} to the queue.", true);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error fetching and playing song");
-            await MessageHelper.EmbedFollowup(Context, "Failed to fetch or play song.", true);
+            await MessageHelper.EmbedFollowupAsync(Context, "Failed to fetch or play song.", true);
         }
     }
 }

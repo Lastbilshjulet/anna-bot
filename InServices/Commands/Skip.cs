@@ -7,13 +7,13 @@ using Microsoft.Extensions.Logging;
 
 namespace anna_bot.InServices.Commands;
 
-public class Volume(
+public class Skip(
     PlayerHolder playerHolder,
-    ILogger<Volume> logger, 
-    ICommandLogger<Volume> commandLogger) : InteractionModuleBase<SocketInteractionContext>
+    ILogger<Skip> logger, 
+    ICommandLogger<Skip> commandLogger) : InteractionModuleBase<SocketInteractionContext>
 {
-    [SlashCommand("volume", "Responds with current volume, or sets a new value for the current song.")]
-    public async Task VolumeAsync(float? volume = null)
+    [SlashCommand("skip", "Skips the currently playing song.")]
+    public async Task SkipAsync()
     {
         await DeferAsync(ephemeral: true);
         commandLogger.LogCommandCalled(Context);
@@ -31,20 +31,15 @@ public class Volume(
         if (player is not { IsPlaying: true })
         {
             logger.LogError("Player not found for guild {GuildId}", Context.Guild.Id);
-            await MessageHelper.EmbedFollowupAsync(Context, "No music playing.", true);
+            await MessageHelper.EmbedFollowupAsync(Context, "No music playing to be skipped.", true);
             return;
         }
 
-        var currentlySetVolume = player.Volume;
-        logger.LogInformation("Volume is currently set to: {Volume} on {SongTitle}", currentlySetVolume, player.CurrentSong?.Title ?? "Unknown");
-
-        if (!volume.HasValue)
-        {
-            await MessageHelper.EmbedFollowupAsync(Context, $"Volume is set to: {currentlySetVolume * 100}%", true);
-            return;
-        }
+        var songToBeSkipped = "Skipping currently playing song!";
+        if (player.CurrentSong != null)
+            songToBeSkipped = $"Skipping {player.CurrentSong.Title} - {player.CurrentSong.Artist}!";
+        player.Skip();
         
-        player.Volume = volume.Value / 100;
-        await MessageHelper.EmbedFollowupAsync(Context, $"Volume is now set to: {volume.Value}%", true);
+        await MessageHelper.EmbedFollowupAsync(Context, songToBeSkipped, false);
     }
 }

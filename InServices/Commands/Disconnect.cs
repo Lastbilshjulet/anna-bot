@@ -28,21 +28,21 @@ public class Disconnect(
 
         if (voiceChannel == null)
         {
-            await MessageHelper.EmbedFollowup(Context, "You are not connected to a voice channel.", true);
+            await MessageHelper.EmbedFollowupAsync(Context, "You are not connected to a voice channel.", true);
             return;
         }
         
         var audioClient = Context.Guild.AudioClient;
         if (audioClient == null)
         {
-            await MessageHelper.EmbedFollowup(Context, "I am not connected to a voice channel.", true);
+            await MessageHelper.EmbedFollowupAsync(Context, "I am not connected to a voice channel.", true);
             return;
         }
 
         var usersInChannel = voiceChannel.ConnectedUsers.Select(x => x.Id);
         if (!usersInChannel.Contains(discordConfig.Value.ClientId))
         {
-            await MessageHelper.EmbedFollowup(Context, "We need to be connected to the same channel for you to disconnect me.", true);
+            await MessageHelper.EmbedFollowupAsync(Context, "We need to be connected to the same channel for you to disconnect me.", true);
             return;
         }
 
@@ -52,12 +52,12 @@ public class Disconnect(
             playerHolder.RemovePlayer(Context.Guild.Id);
             await voiceChannel.DisconnectAsync();
 
-            await MessageHelper.EmbedFollowup(Context, $"Disconnected from {voiceChannel.Name}", true);
+            await MessageHelper.EmbedFollowupAsync(Context, $"Disconnected from {voiceChannel.Name}", true);
         }
         catch (Exception ex)
         {
             logger.LogError("Error disconnecting to voice channel: {ExMessage}", ex.Message);
-            await MessageHelper.EmbedFollowup(Context, "Failed to disconnect from your voice channel.", true);
+            await MessageHelper.EmbedFollowupAsync(Context, "Failed to disconnect from your voice channel.", true);
         }
     }
 }
