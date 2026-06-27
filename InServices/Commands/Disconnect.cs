@@ -1,8 +1,9 @@
 ﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
+using anna_bot.Domain;
+using anna_bot.Domain.Models.Configurations;
 using anna_bot.InServices.Commands.Helpers;
-using anna_bot.InServices.Models;
 using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
@@ -12,6 +13,7 @@ namespace anna_bot.InServices.Commands;
 
 public class Disconnect(
     ILogger<Disconnect> logger, 
+    PlayerHolder playerHolder,
     ICommandLogger<Disconnect> commandLogger,
     IOptions<DiscordConfiguration> discordConfig) : InteractionModuleBase<SocketInteractionContext>
 {
@@ -37,7 +39,7 @@ public class Disconnect(
             return;
         }
 
-        var usersInChannel = voiceChannel.Users.Select(x => x.Id);
+        var usersInChannel = voiceChannel.ConnectedUsers.Select(x => x.Id);
         if (!usersInChannel.Contains(discordConfig.Value.ClientId))
         {
             await FollowupAsync("We need to be connected to the same channel for you to disconnect me.", ephemeral: true);
@@ -47,9 +49,10 @@ public class Disconnect(
         try
         {
             logger.LogInformation("Disconnecting from voice channel {VoiceChannelName} ({VoiceChannelId})", voiceChannel.Name, voiceChannel.Id);
+            playerHolder.RemovePlayer(Context.Guild.Id);
             await voiceChannel.DisconnectAsync();
 
-            await FollowupAsync($"Disconnecting from {voiceChannel.Name}...", ephemeral: true);
+            await FollowupAsync($"Disconnected from {voiceChannel.Name}", ephemeral: true);
         }
         catch (Exception ex)
         {

@@ -1,8 +1,7 @@
 ﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
-using anna_bot.InServices.Models;
-using anna_bot.OutServices;
+using anna_bot.Domain.Models.Configurations;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
@@ -16,7 +15,6 @@ public class DiscordBot(
     IOptions<DiscordConfiguration> discordConfig,
     DiscordSocketClient client,
     InteractionService interactionService,
-    IYoutubeService youtubeService,
     ILogger<DiscordBot> logger)
 {
     public async Task RunAsync()
@@ -49,10 +47,16 @@ public class DiscordBot(
             logger.LogInformation("{BotName} is ready!", discordConfig.Value.BotName);
         
             await interactionService.AddModulesAsync(typeof(Program).Assembly, serviceProvider);
-            await interactionService.RegisterCommandsGloballyAsync();
-            await interactionService.RegisterCommandsToGuildAsync(discordConfig.Value.GuildId);
-            //await RemoveGlobalCommands();
-            //await RemoveGuildCommands();
+            if (discordConfig.Value.RemoveCommands)
+            {
+                await RemoveGlobalCommands();
+                await RemoveGuildCommands(discordConfig.Value.GuildId);
+            }
+            else
+            {
+                await interactionService.RegisterCommandsGloballyAsync();
+                await interactionService.RegisterCommandsToGuildAsync(discordConfig.Value.GuildId);
+            }
         }
         catch (Exception ex)
         {
@@ -60,13 +64,13 @@ public class DiscordBot(
         }
     }
 
-    private async Task RemoveGuildCommands()
+    private async Task RemoveGuildCommands(ulong guildId)
     {
-        var commands = await client.GetGuild(discordConfig.Value.GuildId).GetApplicationCommandsAsync();
+        var commands = await client.GetGuild(guildId).GetApplicationCommandsAsync();
         foreach (var command in commands)
         {
             await command.DeleteAsync();
-            logger.LogInformation("Deleted guild command: {CommandName} from {BotName}, and {Guild}", command.Name, discordConfig.Value.BotName, discordConfig.Value.GuildId);
+            logger.LogInformation("Deleted guild command: {CommandName} from {BotName}, and {Guild}", command.Name, discordConfig.Value.BotName, guildId);
         }
     }
 

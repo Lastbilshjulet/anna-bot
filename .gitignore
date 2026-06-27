@@ -56,6 +56,10 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 
+/*.sqlite
+
 .idea/
 /anna-bot.sln.DotSettings.user
 logs/
+
+Songs/

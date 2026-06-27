@@ -36,7 +36,7 @@ public class Connect(ILogger<Connect> logger, ICommandLogger<Connect> commandLog
             logger.LogInformation("Connecting to voice channel {VoiceChannelName} ({VoiceChannelId})", voiceChannel.Name, voiceChannel.Id);
             await voiceChannel.ConnectAsync();
 
-            await FollowupAsync($"Connecting to {voiceChannel.Name}...", ephemeral: true);
+            await FollowupAsync($"Connected to {voiceChannel.Name}", ephemeral: true);
         }
         catch (Exception ex)
         {

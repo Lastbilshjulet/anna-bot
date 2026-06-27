@@ -1,16 +1,22 @@
 ﻿using System;
 using System.IO;
+using anna_bot.Domain;
+using anna_bot.Domain.Models.Configurations;
+using anna_bot.Domain.Services;
 using anna_bot.InServices;
 using anna_bot.InServices.Commands.Helpers;
-using anna_bot.InServices.Models;
 using anna_bot.OutServices;
+using anna_bot.OutServices.DbContexts;
+using anna_bot.OutServices.UseCases;
 using Discord;
 using Discord.Interactions;
 using Discord.LibDave.Binding;
 using Discord.WebSocket;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
+using YoutubeExplode;
 
 var envContent = File.ReadAllLines(".env");
 foreach (var line in envContent)
@@ -49,11 +55,19 @@ var services = new ServiceCollection()
     .AddLogging(loggingBuilder => loggingBuilder.AddSerilog())
     .AddSingleton<IConfiguration>(configuration)
     .Configure<DiscordConfiguration>(configuration.GetSection("Discord").Bind)
+    .Configure<MusicConfiguration>(configuration.GetSection("Music").Bind)
+    .AddDbContextFactory<SongDbContext>(options => options.UseSqlite(configuration.GetConnectionString("SongDb")))
+    .AddSingleton<SongMapper>()
     .AddSingleton(discordSocketConfig)
     .AddSingleton(x => new DiscordSocketClient(x.GetRequiredService<DiscordSocketConfig>()))
     .AddSingleton(x => new InteractionService(x.GetRequiredService<DiscordSocketClient>()))
     .AddTransient(typeof(ICommandLogger<>), typeof(CommandLogger<>))
+    .AddSingleton<YoutubeClient>()
     .AddSingleton<IYoutubeService, YoutubeService>()
+    .AddSingleton<ISpotifyService, SpotifyService>()
+    .AddSingleton<ISongDbService, SongDbService>()
+    .AddSingleton<IAudioService, AudioService>()
+    .AddSingleton<PlayerHolder>()
     .AddSingleton<DiscordBot>()
     .BuildServiceProvider();
 
