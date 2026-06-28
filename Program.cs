@@ -4,6 +4,7 @@ using anna_bot.Domain;
 using anna_bot.Domain.Models.Configurations;
 using anna_bot.Domain.Services;
 using anna_bot.InServices;
+using anna_bot.InServices.Commands.Autocompleters;
 using anna_bot.InServices.Commands.Helpers;
 using anna_bot.OutServices;
 using anna_bot.OutServices.DbContexts;
@@ -59,6 +60,7 @@ var services = new ServiceCollection()
     .AddDbContextFactory<SongDbContext>(options => options.UseSqlite(configuration.GetConnectionString("SongDb")))
     .AddSingleton<SongMapper>()
     .AddSingleton<MessageHelper>()
+    .AddSingleton<SongAutocompleteHandler>()
     .AddSingleton(discordSocketConfig)
     .AddSingleton(x => new DiscordSocketClient(x.GetRequiredService<DiscordSocketConfig>()))
     .AddSingleton(x => new InteractionService(x.GetRequiredService<DiscordSocketClient>()))

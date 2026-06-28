@@ -1,7 +1,9 @@
 ﻿using System;
+using System.Linq;
 using System.Threading.Tasks;
 using anna_bot.Domain;
 using anna_bot.Domain.Services;
+using anna_bot.InServices.Commands.Autocompleters;
 using anna_bot.InServices.Commands.Helpers;
 using Discord.Interactions;
 using Discord.WebSocket;
@@ -18,7 +20,7 @@ public class Play(
     // TODO: Add buttons to skip etc
     // TODO: Add autocomplete for existing songs
     [SlashCommand("play", "Plays song from query!")]
-    public async Task PlayAsync(string query)
+    public async Task PlayAsync([Autocomplete(typeof(SongAutocompleteHandler))] string query)
     {
         await DeferAsync(ephemeral: true);
         commandLogger.LogCommandCalled(Context, query);
@@ -58,18 +60,22 @@ public class Play(
 
         try
         {
-            var fetchedSong = await audioService.SearchAndFetch(query, guildUser);
-            if (fetchedSong == null)
+            var selectedSong = playerHolder.GetAllAvailableSongs().FirstOrDefault(x => x.YoutubeId == query);
+            if (selectedSong == null)
             {
-                logger.LogInformation("No result found from query {Query}", query);
-                await MessageHelper.EmbedFollowupAsync(Context, $"No result found from query {query}", true);
-                return;
+                selectedSong = await audioService.SearchAndFetch(query, guildUser);
+                if (selectedSong == null)
+                {
+                    logger.LogInformation("No result found from query {Query}", query);
+                    await MessageHelper.EmbedFollowupAsync(Context, $"No result found from query {query}", true);
+                    return;
+                }
             }
 
-            logger.LogInformation("Adding song {SongName} to the queue in {VoiceChannelName} ({VoiceChannelId})", fetchedSong.Title, voiceChannel.Name, voiceChannel.Id);
-            playerHolder.AddSong(Context.Guild.Id, fetchedSong, textChannel, voiceChannel);
+            logger.LogInformation("Adding song {SongName} to the queue in {VoiceChannelName} ({VoiceChannelId})", selectedSong.Title, voiceChannel.Name, voiceChannel.Id);
+            playerHolder.AddSong(Context.Guild.Id, selectedSong, textChannel, voiceChannel);
             
-            await MessageHelper.EmbedFollowupAsync(Context, $"Added {fetchedSong.Title} to the queue.", true);
+            await MessageHelper.EmbedFollowupAsync(Context, $"Added {selectedSong.Title} to the queue.", true);
         }
         catch (Exception ex)
         {
