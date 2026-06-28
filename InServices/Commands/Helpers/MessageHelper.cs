@@ -30,7 +30,7 @@ public class MessageHelper
 
         if (song != null)
         {
-            embed.Description = $":notes: [{song.Title} - {song.Artist}]({song.Source}) {song.FormattedDuration}";
+            embed.Description = $":notes: [{song.Title} - {song.Artist}]({song.Source}) {song.FormattedDuration()}";
             embed.Footer = new EmbedFooterBuilder().WithText($"By {song.RequestedBy}");
         }
         
