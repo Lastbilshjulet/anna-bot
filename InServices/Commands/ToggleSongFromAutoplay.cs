@@ -15,7 +15,7 @@ public class ToggleSongFromAutoplay(
     ILogger<ToggleSongFromAutoplay> logger, 
     ICommandLogger<ToggleSongFromAutoplay> commandLogger) : InteractionModuleBase<SocketInteractionContext>
 {
-    [SlashCommand("toggleSongFromAutoplay", "Toggles song from autoplay!")]
+    [SlashCommand("togglesongfromautoplay", "Toggles song from autoplay!")]
     public async Task ToggleSongFromAutoplayAsync([Autocomplete(typeof(SongAutocompleteHandler))] string query)
     {
         await DeferAsync(ephemeral: true);
