@@ -18,7 +18,6 @@ public class Play(
     ICommandLogger<Play> commandLogger) : InteractionModuleBase<SocketInteractionContext>
 {
     // TODO: Add buttons to skip etc
-    // TODO: Add autocomplete for existing songs
     [SlashCommand("play", "Plays song from query!")]
     public async Task PlayAsync([Autocomplete(typeof(SongAutocompleteHandler))] string query)
     {

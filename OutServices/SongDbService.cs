@@ -60,4 +60,22 @@ public class SongDbService(
         
         return mapper.ToDomain(dbSong);
     }
+
+    public Song ToggleAutoplay(Song song)
+    {
+        using var context = dbContextFactory.CreateDbContext();
+        var dbSong = context.Songs.FirstOrDefault(x => x.YoutubeId == song.YoutubeId);
+        if (dbSong == null)
+        {
+            logger.LogCritical("Song to update was not found {SongTitle} ({YoutubeId})", song.Title, song.YoutubeId);
+            throw new Exception($"Song not found, should never happen");
+        }
+        
+        dbSong.Autoplay = !dbSong.Autoplay;
+        dbSong.UpdatedAt = DateTime.Now;
+
+        context.SaveChanges();
+        
+        return mapper.ToDomain(dbSong);
+    }
 }
