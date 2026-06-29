@@ -15,7 +15,7 @@ public class Skip(
     [SlashCommand("skip", "Skips the currently playing song.")]
     public async Task SkipAsync()
     {
-        await DeferAsync(ephemeral: true);
+        await DeferAsync();
         commandLogger.LogCommandCalled(Context);
         
         var guildUser = Context.User as SocketGuildUser;
@@ -38,7 +38,7 @@ public class Skip(
         var songToBeSkipped = "Skipping currently playing song!";
         if (player.CurrentSong != null)
             songToBeSkipped = $"Skipping {player.CurrentSong.Title} - {player.CurrentSong.Artist}!";
-        player.Skip();
+        await player.Skip();
         
         await MessageHelper.EmbedFollowupAsync(Context, songToBeSkipped, false);
     }

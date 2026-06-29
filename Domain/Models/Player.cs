@@ -8,6 +8,7 @@ using anna_bot.Domain.Models.Configurations;
 using anna_bot.InServices.Commands.Helpers;
 using anna_bot.OutServices.UseCases;
 using Discord.Audio;
+using Discord.Rest;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 
@@ -26,6 +27,7 @@ public class Player(
     private CancellationTokenSource? _currentSongCts;
     private SocketVoiceChannel? _voiceChannel;
     private SocketTextChannel? _textChannel;
+    private RestUserMessage? _currentMessage;
 
     public ulong GuildId { get; } = guildId;
     public bool IsPlaying { get; private set; }
@@ -50,7 +52,7 @@ public class Player(
                 {
                     logger.LogInformation("No more listeners found");
                     // TODO: Pause/Stop here maybe?
-                    await MessageHelper.EmbedSendMessageAsync(_textChannel!, "No more listeners found, stopping.", null);
+                    await MessageHelper.EmbedSendMessageAsync(_textChannel!, "No more listeners found, stopping.");
                     break;
                 }
                 
@@ -61,7 +63,7 @@ public class Player(
                 {
                     logger.LogInformation("No more songs found to play.");
                     // TODO: How to leave from here? Need to reset unplayed queue somehow
-                    await MessageHelper.EmbedSendMessageAsync(_textChannel!, "No more songs found to play.", null);
+                    await MessageHelper.EmbedSendMessageAsync(_textChannel!, "No more songs found to play.");
                     break;
                 }
                 
@@ -85,7 +87,7 @@ public class Player(
                     if (_textChannel != null)
                     {
                         var title = song.IsAutoPlayed ? "Auto-Playing..." : "Now Playing...";
-                        await MessageHelper.EmbedSendMessageAsync(_textChannel!, title, song);
+                        _currentMessage = await MessageHelper.EmbedSendMessageAsync(_textChannel!, title, song);
                     }
                     
                     songDbService.IncreasePlayAmount(song);
@@ -129,12 +131,29 @@ public class Player(
         return _queue.Dequeue();
     }
 
-    public void Skip()
+    public async Task Skip()
     {
         lock (_lock)
         {
             _currentSongCts?.Cancel();
         }
+        await DeleteMessageAsync();
+    }
+
+    public async Task DisconnectAsync()
+    {
+        if (_voiceChannel != null)
+        {
+            await _voiceChannel.DisconnectAsync();
+        }
+        
+        await DeleteMessageAsync();
+    }
+
+    private async Task DeleteMessageAsync()
+    {
+        if (_currentMessage != null)
+            await _currentMessage.DeleteAsync();
     }
 
     public void AddUnplayed(Song song)

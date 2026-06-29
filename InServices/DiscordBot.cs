@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Threading.Tasks;
 using anna_bot.Domain.Models.Configurations;
+using anna_bot.InServices.Commands.ButtonHandlers;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
@@ -15,6 +16,7 @@ public class DiscordBot(
     IOptions<DiscordConfiguration> discordConfig,
     DiscordSocketClient client,
     InteractionService interactionService,
+    ButtonHandler buttonHandler,
     ILogger<DiscordBot> logger)
 {
     public async Task RunAsync()
@@ -24,6 +26,7 @@ public class DiscordBot(
         client.Ready += OnReady;
         client.InteractionCreated += HandleInteraction;
         client.MessageDeleted += OnMessageDeleted;
+        client.ButtonExecuted += buttonHandler.OnButtonExecuted;
         client.Log += Log;
 
         await client.LoginAsync(TokenType.Bot, discordConfig.Value.Token);

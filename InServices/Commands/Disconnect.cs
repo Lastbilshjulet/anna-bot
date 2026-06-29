@@ -49,10 +49,14 @@ public class Disconnect(
         try
         {
             logger.LogInformation("Disconnecting from voice channel {VoiceChannelName} ({VoiceChannelId})", voiceChannel.Name, voiceChannel.Id);
+            var player = playerHolder.GetExistingPlayer(Context.Guild.Id);
+            if (player != null)
+                await player.DisconnectAsync();
+            else
+                await voiceChannel.DisconnectAsync();
             playerHolder.RemovePlayer(Context.Guild.Id);
-            await voiceChannel.DisconnectAsync();
 
-            await MessageHelper.EmbedFollowupAsync(Context, $"Disconnected from {voiceChannel.Name}", true);
+            await MessageHelper.EmbedFollowupAsync(Context, $"I was disconnected from {voiceChannel.Name} by {guildUser!.Username}", true);
         }
         catch (Exception ex)
         {
