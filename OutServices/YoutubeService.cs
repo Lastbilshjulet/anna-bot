@@ -1,5 +1,5 @@
 ﻿using System;
-using System.IO;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -77,6 +77,23 @@ public partial class YoutubeService(
             Thumbnail = thumbnailUrl,
             Source = video.Url
         };
+    }
+
+    public async Task<List<Song>> GetPlaylistDetails(string uri)
+    {
+        var result = youtubeClient.Playlists.GetVideosAsync(uri);
+        
+        return await result
+            .Select(video => new Song
+            {
+                YoutubeId = video.Id.Value,
+                Title = video.Title,
+                Artist = video.Author.ChannelTitle,
+                Duration = video.Duration ?? TimeSpan.Zero,
+                Thumbnail = video.Thumbnails.Count > 0 ? video.Thumbnails[0].Url : string.Empty,
+                Source = video.Url
+            })
+            .ToListAsync();
     }
 
     public async Task<string?> DownloadSong(Song song)

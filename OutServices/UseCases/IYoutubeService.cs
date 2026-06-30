@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System.Collections.Generic;
+using System.Threading.Tasks;
 using anna_bot.Domain.Models;
 
 namespace anna_bot.OutServices.UseCases;
@@ -9,5 +10,6 @@ public interface IYoutubeService
     bool ValidatePlaylistUri(string uri);
     Task<Song?> Search(string query, Song? song);
     Task<Song?> GetVideoDetails(string uri);
+    Task<List<Song>> GetPlaylistDetails(string uri);
     Task<string?> DownloadSong(Song song);
 }
