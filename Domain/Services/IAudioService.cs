@@ -7,4 +7,5 @@ namespace anna_bot.Domain.Services;
 public interface IAudioService
 {
     Task<Song?> SearchAndFetch(string query, SocketGuildUser? guildUser);
+    Task SearchSpotifyAndUpdateAsync(Song selectedSong);
 }

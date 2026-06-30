@@ -78,4 +78,22 @@ public class SongDbService(
         
         return mapper.ToDomain(dbSong);
     }
+
+    public Song UpdateSpotifyId(string youtubeId, string spotifyId)
+    {
+        using var context = dbContextFactory.CreateDbContext();
+        var dbSong = context.Songs.FirstOrDefault(x => x.YoutubeId == youtubeId);
+        if (dbSong == null)
+        {
+            logger.LogCritical("Song to update was not found {YoutubeId}", youtubeId);
+            throw new Exception($"Song not found, should never happen");
+        }
+        
+        dbSong.SpotifyId = spotifyId;
+        dbSong.UpdatedAt = DateTime.Now;
+        
+        context.SaveChanges();
+        
+        return mapper.ToDomain(dbSong);
+    }
 }

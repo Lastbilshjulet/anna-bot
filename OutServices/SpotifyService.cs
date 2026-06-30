@@ -44,14 +44,7 @@ public partial class SpotifyService(
             logger.LogInformation("Getting spotify track details for track id: {TrackId}", trackId);
             var track = await spotifyClient.Tracks.Get(trackId);
 
-            return new Song
-            {
-                SpotifyId = trackId,
-                Artist = string.Join(", ", track.Artists.Select(a => a.Name)),
-                Title = track.Name,
-                Source = track.ExternalUrls["spotify"],
-                Duration = TimeSpan.FromMilliseconds(track.DurationMs)
-            };
+            return FullTrackToSong(track);
         }
         catch (APIUnauthorizedException)
         {
@@ -67,6 +60,34 @@ public partial class SpotifyService(
         }
         
         return null;
+    }
+
+    private static Song FullTrackToSong(FullTrack track)
+    {
+        return new Song
+        {
+            SpotifyId = track.Id,
+            Artist = string.Join(", ", track.Artists.Select(a => a.Name)),
+            Title = track.Name,
+            Source = track.ExternalUrls["spotify"],
+            Duration = TimeSpan.FromMilliseconds(track.DurationMs)
+        };
+    }
+
+    public async Task<Song?> SearchTrackAsync(string query)
+    {
+        var searchRequest = new SearchRequest(SearchRequest.Types.Track, query);
+        var searchResponse = await spotifyClient.Search.Item(searchRequest);
+
+        var track = searchResponse.Tracks.Items?.FirstOrDefault();
+
+        if (track == null)
+            return null;
+
+        var mappedTrack = FullTrackToSong(track);
+        logger.LogInformation("Searched spotify for {Query}: Found {TrackTitle} - {TrackArtist}", query, mappedTrack.Title, mappedTrack.Artist);
+        
+        return mappedTrack;
     }
 
     private static string? ExtractTrackId(string url)

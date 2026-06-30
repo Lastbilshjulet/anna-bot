@@ -69,16 +69,39 @@ public class AudioService(
         return song;
     }
 
+    public async Task SearchSpotifyAndUpdateAsync(Song selectedSong)
+    {
+        var spotifySong = await spotifyService.SearchTrackAsync($"{selectedSong.Title} {selectedSong.Artist}");
+        if (spotifySong == null)
+            return;
+        
+        songDbService.UpdateSpotifyId(selectedSong.YoutubeId, spotifySong.SpotifyId!);
+    }
+
     private async Task<Song?> ProcessSong(SocketGuildUser? guildUser, Song song)
     {
         try
         {
-            var alreadyExistingSong =
-                playerHolder.GetAllAvailableSongs().FirstOrDefault(x => x.YoutubeId == song.YoutubeId);
+            var alreadyExistingSong = playerHolder.GetAllAvailableSongs().FirstOrDefault(x => x.YoutubeId == song.YoutubeId);
             if (alreadyExistingSong != null)
+            {
+                if (alreadyExistingSong.SpotifyId == null)
+                    await SearchSpotifyAndUpdateAsync(alreadyExistingSong);
                 return alreadyExistingSong;
+            }
 
-            var path = await youtubeService.DownloadSong(song);
+            var downloadTask = youtubeService.DownloadSong(song);
+            var spotifyTask = song.SpotifyId == null 
+                ? spotifyService.SearchTrackAsync($"{song.Title} {song.Artist}")
+                : Task.FromResult<Song?>(null);
+
+            await Task.WhenAll(downloadTask, spotifyTask);
+
+            var path = await downloadTask;
+            var spotifySong = await spotifyTask;
+
+            song.SpotifyId ??= spotifySong?.SpotifyId;
+            
             if (path == null)
                 return null;
 
@@ -112,7 +135,7 @@ public class AudioService(
                 continue;
             
             playerHolder.AddSong(guildUser!.Guild.Id, song, player.TextChannel!, player.VoiceChannel!);
-            logger.LogInformation("Added song {SongTitle} from playlist to player in guild {GuildId}", song.Title, guildUser!.Guild.Id);
+            logger.LogInformation("Added song {SongTitle} from playlist to player in guild {GuildId}", song.Title, guildUser.Guild.Id);
         }
     }
 

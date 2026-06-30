@@ -81,6 +81,11 @@ public class Play(
                     return;
                 }
             }
+            else
+            {
+                if (selectedSong.SpotifyId == null)
+                    await audioService.SearchSpotifyAndUpdateAsync(selectedSong);
+            }
 
             logger.LogInformation("Adding song {SongName} to the queue in {VoiceChannelName} ({VoiceChannelId})", selectedSong.Title, voiceChannel.Name, voiceChannel.Id);
             playerHolder.AddSong(Context.Guild.Id, selectedSong, textChannel, voiceChannel);

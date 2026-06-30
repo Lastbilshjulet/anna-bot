@@ -9,5 +9,6 @@ public interface ISpotifyService
     bool ValidateTrackUri(string uri);
     bool ValidatePlaylistUri(string uri);
     Task<Song?> GetTrackDetails(string uri);
+    Task<Song?> SearchTrackAsync(string query);
     Task<List<Song>?> GetPlaylistDetails(string uri);
 }

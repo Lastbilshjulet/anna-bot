@@ -10,4 +10,5 @@ public interface ISongDbService
     Song InsertSong(Song song);
     Song IncreasePlayAmount(Song song);
     Song ToggleAutoplay(Song song);
+    Song UpdateSpotifyId(string youtubeId, string spotifyId);
 }

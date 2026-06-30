@@ -30,8 +30,20 @@ public class SongAutocompleteHandler(PlayerHolder playerHolder, ILogger<SongAuto
                 songs = songs.Where(x => x.Title.Contains(userInput, StringComparison.OrdinalIgnoreCase) || x.Artist.Contains(userInput, StringComparison.OrdinalIgnoreCase)).ToList();
         
             songs = songs.OrderBy(x => x.TimesPlayed * -1).ToList();
-        
-            return Task.FromResult(AutocompletionResult.FromSuccess(songs.Select(x => new AutocompleteResult($"{x.Title} - {x.Artist} | {x.FormattedDuration()}", x.YoutubeId)).Take(25)));
+            
+            return Task.FromResult(AutocompletionResult.FromSuccess(songs.Select(x => 
+            {
+                var durationPart = $" | {x.FormattedDuration()}";
+                var maxTitleArtistLength = 100 - durationPart.Length;
+                    
+                var titleAndArtist = $"{x.Title} - {x.Artist}";
+                if (titleAndArtist.Length > maxTitleArtistLength)
+                    titleAndArtist = titleAndArtist[..maxTitleArtistLength];
+                    
+                var fullDisplay = $"{titleAndArtist}{durationPart}";
+                    
+                return new AutocompleteResult(fullDisplay, x.YoutubeId);
+            }).Take(25)));
         }
         catch (Exception exception)
         {
