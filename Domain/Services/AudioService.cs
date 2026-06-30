@@ -53,6 +53,7 @@ public class AudioService(
         song.Path = path;
         song.Extension = musicConfig.Value.Extension;
         song.RequestedBy = guildUser?.Username ?? "UnknownUser";
+        song.RequestedByUserId = guildUser?.Id ?? 0;
 
         logger.LogInformation("Inserting {SongTitle} ({YoutubeId}) into database", song.Title, song.YoutubeId);
         song = songDbService.InsertSong(song);

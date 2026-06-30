@@ -6,14 +6,14 @@ using Microsoft.Extensions.Logging;
 
 namespace anna_bot.InServices.Commands;
 
-public class Skip(
+public class Cut(
     PlayerHolder playerHolder,
-    ILogger<Skip> logger, 
-    ICommandLogger<Skip> commandLogger,
+    ILogger<Cut> logger, 
+    ICommandLogger<Cut> commandLogger,
     ValidationHelper validationHelper) : InteractionModuleBase<SocketInteractionContext>
 {
-    [SlashCommand("skip", "Skips the currently playing song.")]
-    public async Task SkipAsync()
+    [SlashCommand("cut", "Make the last song in the queue cut in line to be played next.")]
+    public async Task CutAsync()
     {
         await DeferAsync();
         commandLogger.LogCommandCalled(Context);
@@ -22,9 +22,13 @@ public class Skip(
         if (player == null)
             return;
 
-        var currentSong = player.CurrentSong;
-        await player.Skip();
-        
-        await MessageHelper.EmbedFollowupAsync(Context, $"Skipping {currentSong!.Title} - {currentSong.Artist}!", false);
+        if (player.Queue.Count < 2)
+        {
+            await MessageHelper.EmbedFollowupAsync(Context, "No queue to cut.", true);
+            return;
+        }
+
+        var cutSong = player.Queue.Cut();
+        await MessageHelper.EmbedFollowupAsync(Context, $"Moved {cutSong.Title} - {cutSong.Artist} to the front of the queue.", false);
     }
 }

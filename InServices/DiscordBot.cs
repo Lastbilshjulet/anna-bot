@@ -113,13 +113,6 @@ public class DiscordBot(
         {
             logger.LogInformation("Message deleted: {MessageContent} by {Author} from {Channel} ({ChannelId})", 
                 message.Value.Content, message.Value.Author.Username, message.Value.Channel.Name, message.Value.Channel.Id);
-            return Task.CompletedTask;
-        }
-
-        if (channel.HasValue)
-        {
-            logger.LogInformation("Message not in cache, deleted from channel: {ChannelName} ({ChannelId})", 
-                channel.Value.Name, channel.Value.Id);
         }
         
         return Task.CompletedTask;

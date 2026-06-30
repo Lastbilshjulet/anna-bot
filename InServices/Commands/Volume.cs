@@ -2,7 +2,6 @@
 using anna_bot.Domain;
 using anna_bot.InServices.Commands.Helpers;
 using Discord.Interactions;
-using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 
 namespace anna_bot.InServices.Commands;
@@ -10,7 +9,8 @@ namespace anna_bot.InServices.Commands;
 public class Volume(
     PlayerHolder playerHolder,
     ILogger<Volume> logger, 
-    ICommandLogger<Volume> commandLogger) : InteractionModuleBase<SocketInteractionContext>
+    ICommandLogger<Volume> commandLogger,
+    ValidationHelper validationHelper) : InteractionModuleBase<SocketInteractionContext>
 {
     [SlashCommand("volume", "Responds with current volume, or sets a new value for the current song.")]
     public async Task VolumeAsync(float? volume = null)
@@ -18,33 +18,20 @@ public class Volume(
         await DeferAsync(ephemeral: true);
         commandLogger.LogCommandCalled(Context);
         
-        var guildUser = Context.User as SocketGuildUser;
-        var voiceChannel = guildUser?.VoiceChannel;
-
-        if (voiceChannel == null)
-        {
-            await MessageHelper.EmbedFollowupAsync(Context, "You are not connected to a voice channel.", true);
+        var player = await validationHelper.ValidateAndGetPlayer(Context, logger, playerHolder);
+        if (player == null)
             return;
-        }
-
-        var player = playerHolder.GetExistingPlayer(Context.Guild.Id);
-        if (player is not { IsPlaying: true })
-        {
-            logger.LogError("Player not found for guild {GuildId}", Context.Guild.Id);
-            await MessageHelper.EmbedFollowupAsync(Context, "No music playing.", true);
-            return;
-        }
 
         var currentlySetVolume = player.Volume;
-        logger.LogInformation("Volume is currently set to: {Volume} on {SongTitle}", currentlySetVolume, player.CurrentSong?.Title ?? "Unknown");
+        logger.LogInformation("Volume is currently set to: {Volume} on {SongTitle}", currentlySetVolume, player.CurrentSong!.Title);
 
         if (!volume.HasValue)
         {
-            await MessageHelper.EmbedFollowupAsync(Context, $"Volume is set to: {currentlySetVolume * 100}%", true);
+            await MessageHelper.EmbedFollowupAsync(Context, $"Volume is set to: {player.DisplayVolume}", false);
             return;
         }
         
         player.Volume = volume.Value / 100;
-        await MessageHelper.EmbedFollowupAsync(Context, $"Volume is now set to: {volume.Value}%", true);
+        await MessageHelper.EmbedFollowupAsync(Context, $"Volume is now set to: {player.DisplayVolume}", false);
     }
 }

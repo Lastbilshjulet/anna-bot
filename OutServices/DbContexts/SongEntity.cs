@@ -46,6 +46,9 @@ public class SongEntity
     [Column("requestedBy", TypeName = "VARCHAR(255)")]
     public string RequestedBy { get; set; } = null!;
     
+    [Column("requestedByUserId", TypeName = "INTEGER")]
+    public ulong RequestedByUserId { get; set; }
+    
     [Column("duration", TypeName = "INTEGER")]
     public long DurationSeconds { get; set; }
     

@@ -13,6 +13,7 @@ public partial class Song
     public string Path { get; set; } = string.Empty;
     public string Extension { get; set; } = string.Empty;
     public string RequestedBy { get; set; } = null!;
+    public ulong RequestedByUserId { get; set; }
     public TimeSpan Duration { get; set; } = TimeSpan.Zero;
     public int TimesPlayed { get; set; }
     public bool Autoplay { get; set; } = true;

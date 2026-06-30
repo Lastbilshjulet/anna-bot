@@ -1,19 +1,21 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace anna_bot.Domain.Models;
 
 public class SongQueue
 {
-    private readonly Queue<Song> _queue = new();
+    private readonly LinkedList<Song> _queue = [];
     private readonly List<Song> _unPlayed = [];
-    private readonly Queue<Song> _history = new();
+    private readonly List<Song> _history = [];
     
     public int Count => _queue.Count;
-    public int UnPlayedCount => _unPlayed.Count;
-    public int CombinedCount => Count + UnPlayedCount;
+    private int UnPlayedCount => _unPlayed.Count;
     public int HistoryCount => _history.Count;
+    public List<Song> GetQueue => _queue.ToList();
+    public List<Song> GetHistory => _history.ToList();
     
     public SongQueue(List<Song> existingSongs)
     {
@@ -22,7 +24,7 @@ public class SongQueue
     
     public void Enqueue(Song song)
     {
-        _queue.Enqueue(song);
+        _queue.AddLast(song);
     }
 
     public void AddUnplayed(Song song)
@@ -34,27 +36,60 @@ public class SongQueue
     {
         if (Count > 0)
         {
-            var song = _queue.Dequeue();
+            var song = _queue.Last();
             song.IsAutoPlayed = false;
-            _history.Enqueue(song);
+            _history.Add(song);
+            _queue.RemoveLast();
             _unPlayed.Remove(song);
             return song;
         }
 
         if (UnPlayedCount > 0)
         {
-            var song = _unPlayed.ElementAt(Random.Shared.Next(_unPlayed.Count));
+            var nextUnplayedIndex = Random.Shared.Next(_unPlayed.Count);
+            Console.WriteLine(nextUnplayedIndex);
+            var song = _unPlayed.ElementAt(nextUnplayedIndex);
             song.IsAutoPlayed = true;
             _unPlayed.Remove(song);
-            _history.Enqueue(song);
+            _history.Add(song);
             return song;
         }
 
         return null;
     }
+    
+    public void QueueFromHistory()
+    {
+        if (HistoryCount <= 1)
+            return;
+        
+        _queue.AddFirst(_history[^2]);
+    }
+
+    public void QueueSameSong()
+    {
+        if (HistoryCount == 0)
+            return;
+        
+        _queue.AddFirst(_history[^1]);
+    }
 
     public void Clear()
     {
+        var unplayedSongs = _unPlayed.Select(x => x.YoutubeId);
+        foreach (var unplayedFromQueue in _queue.Where(unplayedFromQueue => unplayedSongs.Contains(unplayedFromQueue.YoutubeId)))
+        {
+            AddUnplayed(unplayedFromQueue);
+        }
         _queue.Clear();
+    }
+
+    public Song Cut()
+    {
+        var lastSong = _queue.Last();
+        _queue.RemoveLast();
+        _queue.AddFirst(lastSong);
+
+        return lastSong;
     }
 }

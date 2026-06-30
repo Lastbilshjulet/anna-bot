@@ -38,9 +38,7 @@ var configuration = new ConfigurationBuilder()
     .Build();
 
 Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Debug()
-    .WriteTo.Console()
-    .WriteTo.File("logs/anna-bot-.txt", rollingInterval: RollingInterval.Day)
+    .ReadFrom.Configuration(configuration)
     .CreateLogger();
 
 var discordSocketConfig = new DiscordSocketConfig()
@@ -61,6 +59,7 @@ var services = new ServiceCollection()
     .AddDbContextFactory<SongDbContext>(options => options.UseSqlite(configuration.GetConnectionString("SongDb")))
     .AddSingleton<SongMapper>()
     .AddSingleton<MessageHelper>()
+    .AddSingleton<ValidationHelper>()
     .AddSingleton<ButtonHandler>()
     .AddSingleton<SongAutocompleteHandler>()
     .AddSingleton(discordSocketConfig)

@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using anna_bot.Domain;
 using anna_bot.Domain.Models;
 using anna_bot.InServices.Commands.Helpers;
@@ -11,60 +12,137 @@ public class ButtonHandler(PlayerHolder playerHolder, ILogger<ButtonHandler> log
 {
     public async Task OnButtonExecuted(SocketMessageComponent component)
     {
-        switch (component.Data.CustomId)
+        try
         {
-            case "SkipButton":
-                await SkipButtonHandler(component);
-                break;
-            case "DisconnectButton":
-                await DisconnectButtonHandler(component);
-                break;
+            logger.LogInformation("{Button} pressed by {User}", component.Data.CustomId, component.User.Username);
+            var player = await GetPlayer(component);
+            if (player == null)
+                return;
+
+            switch (component.Data.CustomId)
+            {
+                case "BackButton":
+                    await BackButtonHandler(component, player);
+                    break;
+                case "PlayButton":
+                    await PlayButtonHandler(component, player);
+                    break;
+                case "PauseButton":
+                    await PauseButtonHandler(component, player);
+                    break;
+                case "SkipButton":
+                    await SkipButtonHandler(component, player);
+                    break;
+                case "RepeatButton":
+                    await RepeatButtonHandler(component, player);
+                    break;
+                case "VolumeDownButton":
+                    await VolumeDownButtonHandler(component, player);
+                    break;
+                case "VolumeUpButton":
+                    await VolumeUpButtonHandler(component, player);
+                    break;
+                case "DisconnectButton":
+                    await DisconnectButtonHandler(component, player);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Unexpected error occurred during button handling.");
         }
     }
 
-    private async Task DisconnectButtonHandler(SocketMessageComponent component)
+    private static async Task BackButtonHandler(SocketMessageComponent component, Player player)
     {
         await component.DeferAsync();
-        logger.LogInformation("Disconnect button pressed by {User}", component.User.Username);
-        var disconnectPlayer = GetPlayer(component);
-        if (disconnectPlayer == null)
-        {
-            await component.RespondAsync("Unable to process command", ephemeral: true);
-            return;
-        }
-
-        playerHolder.RemovePlayer(component.GuildId!.Value);
-        await disconnectPlayer.DisconnectAsync();
-                
-        await MessageHelper.EmbedButtonFollowupAsync(component, "I was disconnected");
+        await player.PlayPreviousSong();
+        
+        await MessageHelper.EmbedButtonFollowupAsync(component, "Going back to previous song!");
     }
 
-    private async Task SkipButtonHandler(SocketMessageComponent component)
+    private static async Task PlayButtonHandler(SocketMessageComponent component, Player player)
+    {
+        if (!player.IsPlaying)
+            player.Pause();
+
+        await MessageHelper.EmbedSendMessageAsync(component, player);
+    }
+
+    private static async Task PauseButtonHandler(SocketMessageComponent component, Player player)
+    {
+        if (player.IsPlaying)
+            player.Pause();
+
+        await MessageHelper.EmbedSendMessageAsync(component, player);
+    }
+
+    private static async Task SkipButtonHandler(SocketMessageComponent component, Player player)
     {
         await component.DeferAsync();
-        logger.LogInformation("Skip button pressed by {User}", component.User.Username);
-        var skipPlayer = GetPlayer(component);
-        if (skipPlayer == null)
-        {
-            await component.RespondAsync("Unable to process command", ephemeral: true);
-            return;
-        }
-
         var songToBeSkipped = "Skipping currently playing song!";
-        if (skipPlayer.CurrentSong != null)
-            songToBeSkipped = $"Skipping {skipPlayer.CurrentSong.Title} - {skipPlayer.CurrentSong.Artist}!";
-        await skipPlayer.Skip();
+        if (player.CurrentSong != null)
+            songToBeSkipped = $"Skipping {player.CurrentSong.Title} - {player.CurrentSong.Artist}!";
+        await player.Skip();
 
         await MessageHelper.EmbedButtonFollowupAsync(component, songToBeSkipped);
     }
 
-    private Player? GetPlayer(SocketMessageComponent component)
+    private static async Task RepeatButtonHandler(SocketMessageComponent component, Player player)
     {
+        player.ToggleRepeat();
+
+        await MessageHelper.EmbedSendMessageAsync(component, player);
+    }
+
+    private static async Task VolumeDownButtonHandler(SocketMessageComponent component, Player player)
+    {
+        player.DecreaseVolume();
+
+        await MessageHelper.EmbedSendMessageAsync(component, player);
+    }
+
+    private static async Task VolumeUpButtonHandler(SocketMessageComponent component, Player player)
+    {
+        player.IncreaseVolume();
+
+        await MessageHelper.EmbedSendMessageAsync(component, player);
+    }
+
+    private static async Task DisconnectButtonHandler(SocketMessageComponent component, Player player)
+    {
+        await component.DeferAsync();
+        await player.DisconnectAsync();
+                
+        await MessageHelper.EmbedButtonFollowupAsync(component, "I was disconnected");
+    }
+
+    private async Task<Player?> GetPlayer(SocketMessageComponent component)
+    {
+        var guildUser = component.User as SocketGuildUser;
         var guildId = component.GuildId;
         if (guildId.HasValue)
-            return playerHolder.GetExistingPlayer(guildId.Value);
+        {
+            var player = playerHolder.GetExistingPlayer(guildId.Value);
+
+            if (player == null)
+            {
+                logger.LogError("Player not found on button click, should not be possible");
+                await MessageHelper.EmbedButtonFollowupAsync(component, "Unable to process command. ");
+                return null;
+            }
+
+            if (player.VoiceChannel != guildUser?.VoiceChannel)
+            {
+                await MessageHelper.EmbedButtonFollowupAsync(component, "You need to be connected to the same voice channel as me in order to use buttons.");
+                return null;
+            }
+
+            return player;
+        }
         
         logger.LogError("Guild ID is null on SocketMessageComponent");
+        await MessageHelper.EmbedButtonFollowupAsync(component, "Unable to process command. ");
         return null;
     }
 }

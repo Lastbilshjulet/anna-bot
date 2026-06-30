@@ -20,19 +20,24 @@ public class Player(
     ulong guildId,
     IAudioClient audioClient,
     List<Song> availableSongs,
+    Func<Task> onPlaybackEnded,
     ILogger<Player> logger)
 {
-    private readonly SongQueue _queue = new(availableSongs);
     private readonly Lock _lock = new();
     private CancellationTokenSource? _currentSongCts;
-    private SocketVoiceChannel? _voiceChannel;
-    private SocketTextChannel? _textChannel;
     private RestUserMessage? _currentMessage;
+    private readonly ManualResetEvent _pauseEvent = new(true);
 
+    public readonly SongQueue Queue = new(availableSongs);
     public ulong GuildId { get; } = guildId;
     public bool IsPlaying { get; private set; }
     public Song? CurrentSong { get; private set; }
     public float Volume { get; set; } = musicConfiguration.BaseVolume;
+    public bool Repeat { get; private set; }
+
+    public string DisplayVolume => $"{(int)(Volume * 100)}%";
+    public SocketVoiceChannel? VoiceChannel { get; private set; }
+    public SocketTextChannel? TextChannel { get; private set; }
 
     /*
         TODO: Maybe crazy idea, but loop check against how many listeners:
@@ -41,19 +46,16 @@ public class Player(
     */
     private void PlaySong()
     {
-        if (_textChannel == null || _voiceChannel == null)
+        if (TextChannel == null || VoiceChannel == null)
             return;
         
         _ = Task.Run(async () => {
             do
             {
                 Volume = musicConfiguration.BaseVolume;
-                if (_voiceChannel.ConnectedUsers.Count <= 1)
+                if (VoiceChannel.ConnectedUsers.Count <= 1)
                 {
                     logger.LogInformation("No more listeners found");
-                    // TODO: Pause/Stop here maybe?
-                    await MessageHelper.EmbedSendMessageAsync(_textChannel!, "No more listeners found, stopping.");
-                    break;
                 }
                 
                 var song = Dequeue();
@@ -62,9 +64,9 @@ public class Player(
                 if (song == null)
                 {
                     logger.LogInformation("No more songs found to play.");
-                    // TODO: How to leave from here? Need to reset unplayed queue somehow
-                    await MessageHelper.EmbedSendMessageAsync(_textChannel!, "No more songs found to play.");
-                    break;
+                    await MessageHelper.EmbedSendMessageAsync(TextChannel!, "No more songs found to play.");
+                    await DisconnectAsync();
+                    return;
                 }
                 
                 var songPath = song.GetFullPath(musicConfiguration.Path);
@@ -77,6 +79,7 @@ public class Player(
                 try
                 {
                     IsPlaying = true;
+                    _pauseEvent.Set();
 
                     lock (_lock)
                     {
@@ -84,10 +87,9 @@ public class Player(
                         _currentSongCts = new CancellationTokenSource();
                     }
 
-                    if (_textChannel != null)
+                    if (TextChannel != null)
                     {
-                        var title = song.IsAutoPlayed ? "Auto-Playing..." : "Now Playing...";
-                        _currentMessage = await MessageHelper.EmbedSendMessageAsync(_textChannel!, title, song);
+                        _currentMessage = await MessageHelper.EmbedSendMessageAsync(this, TextChannel!, song);
                     }
                     
                     songDbService.IncreasePlayAmount(song);
@@ -115,50 +117,84 @@ public class Player(
         });
     }
 
+    private Song? Dequeue()
+    {
+        if (Repeat)
+            Queue.QueueSameSong();
+        return Queue.Dequeue();
+    }
+
     public void Enqueue(Song song, SocketTextChannel textChannel, SocketVoiceChannel voiceChannel)
     {
-        _queue.Enqueue(song);
-        _textChannel = textChannel;
-        _voiceChannel = voiceChannel;
-        if (_queue.Count == 1 && !IsPlaying)
+        Queue.Enqueue(song);
+        TextChannel = textChannel;
+        VoiceChannel = voiceChannel;
+        if (Queue.Count == 1 && !IsPlaying)
         {
             PlaySong();
         }
     }
 
-    private Song? Dequeue()
-    {
-        return _queue.Dequeue();
-    }
-
     public async Task Skip()
     {
         lock (_lock)
-        {
             _currentSongCts?.Cancel();
-        }
+        
+        if (!IsPlaying)
+            _pauseEvent.Set();
+        
         await DeleteMessageAsync();
+    }
+
+    public async Task PlayPreviousSong()
+    {
+        Queue.QueueFromHistory();
+        await Skip();
+    }
+
+    public bool Pause()
+    {
+        IsPlaying = !IsPlaying;
+        
+        if (IsPlaying)
+            _pauseEvent.Set();
+        else
+            _pauseEvent.Reset();
+        
+        return IsPlaying;
+    }
+
+    public void DecreaseVolume()
+    {
+        Volume -= 0.1f;
+    }
+
+    public void IncreaseVolume()
+    {
+        Volume += 0.1f;
+    }
+
+    public bool ToggleRepeat()
+    {
+        Repeat = !Repeat;
+        return Repeat;
     }
 
     public async Task DisconnectAsync()
     {
-        if (_voiceChannel != null)
+        if (VoiceChannel != null)
         {
-            await _voiceChannel.DisconnectAsync();
+            await VoiceChannel.DisconnectAsync();
         }
         
         await DeleteMessageAsync();
+        await onPlaybackEnded.Invoke();
     }
 
     private async Task DeleteMessageAsync()
     {
         if (_currentMessage != null)
             await _currentMessage.DeleteAsync();
-    }
-
-    public void AddUnplayed(Song song)
-    {
-        _queue.AddUnplayed(song);
     }
 
     private async Task StreamAudioFromFile(string filePath, CancellationToken cancellationToken = default)
@@ -198,6 +234,8 @@ public class Player(
         int bytesRead;
         while ((bytesRead = await source.ReadAsync(buffer, cancellationToken)) > 0)
         {
+            _pauseEvent.WaitOne();
+            
             var volume = Volume; // snapshot once per chunk to avoid tearing
 
             // Walk through each 16-bit little-endian sample and scale it

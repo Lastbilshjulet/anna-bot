@@ -6,14 +6,14 @@ using Microsoft.Extensions.Logging;
 
 namespace anna_bot.InServices.Commands;
 
-public class Skip(
+public class Back(
     PlayerHolder playerHolder,
-    ILogger<Skip> logger, 
-    ICommandLogger<Skip> commandLogger,
+    ILogger<Back> logger, 
+    ICommandLogger<Back> commandLogger,
     ValidationHelper validationHelper) : InteractionModuleBase<SocketInteractionContext>
 {
-    [SlashCommand("skip", "Skips the currently playing song.")]
-    public async Task SkipAsync()
+    [SlashCommand("back", "Goes back to the previously played song.")]
+    public async Task BackAsync()
     {
         await DeferAsync();
         commandLogger.LogCommandCalled(Context);
@@ -22,9 +22,8 @@ public class Skip(
         if (player == null)
             return;
 
-        var currentSong = player.CurrentSong;
-        await player.Skip();
+        await player.PlayPreviousSong();
         
-        await MessageHelper.EmbedFollowupAsync(Context, $"Skipping {currentSong!.Title} - {currentSong.Artist}!", false);
+        await MessageHelper.EmbedFollowupAsync(Context, "Going back to previous song!", false);
     }
 }

@@ -2,12 +2,14 @@
 using System.Linq;
 using System.Threading.Tasks;
 using anna_bot.Domain;
+using anna_bot.Domain.Models.Configurations;
 using anna_bot.Domain.Services;
 using anna_bot.InServices.Commands.Autocompleters;
 using anna_bot.InServices.Commands.Helpers;
 using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace anna_bot.InServices.Commands;
 
@@ -15,13 +17,13 @@ public class Play(
     PlayerHolder playerHolder, 
     IAudioService audioService, 
     ILogger<Play> logger, 
-    ICommandLogger<Play> commandLogger) : InteractionModuleBase<SocketInteractionContext>
+    ICommandLogger<Play> commandLogger,
+    IOptions<DiscordConfiguration> discordConfig) : InteractionModuleBase<SocketInteractionContext>
 {
-    // TODO: Add buttons to skip etc
     [SlashCommand("play", "Plays song from query!")]
     public async Task PlayAsync([Autocomplete(typeof(SongAutocompleteHandler))] string query)
     {
-        await DeferAsync(ephemeral: true);
+        await DeferAsync();
         commandLogger.LogCommandCalled(Context, query);
         
         var guildUser = Context.User as SocketGuildUser;
@@ -56,6 +58,15 @@ public class Play(
                 return;
             }
         }
+        else
+        {
+            var usersInChannel = voiceChannel.ConnectedUsers.Select(x => x.Id);
+            if (!usersInChannel.Contains(discordConfig.Value.ClientId))
+            {
+                await MessageHelper.EmbedFollowupAsync(Context, "We need to be connected to the same channel for you use this command.", true);
+                return;
+            }
+        }
 
         try
         {
@@ -74,7 +85,7 @@ public class Play(
             logger.LogInformation("Adding song {SongName} to the queue in {VoiceChannelName} ({VoiceChannelId})", selectedSong.Title, voiceChannel.Name, voiceChannel.Id);
             playerHolder.AddSong(Context.Guild.Id, selectedSong, textChannel, voiceChannel);
             
-            await MessageHelper.EmbedFollowupAsync(Context, $"Added {selectedSong.Title} to the queue.", true);
+            await MessageHelper.EmbedFollowupAsync(Context, $"Added {selectedSong.Title} to the queue.", false);
         }
         catch (Exception ex)
         {

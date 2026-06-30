@@ -31,7 +31,7 @@ public class SongAutocompleteHandler(PlayerHolder playerHolder, ILogger<SongAuto
         
             songs = songs.OrderBy(x => x.TimesPlayed * -1).ToList();
         
-            return Task.FromResult(AutocompletionResult.FromSuccess(songs.Select(x => new AutocompleteResult($"{x.Title} - {x.Artist} | {x.FormattedDuration()}", x.YoutubeId)).ToList()));
+            return Task.FromResult(AutocompletionResult.FromSuccess(songs.Select(x => new AutocompleteResult($"{x.Title} - {x.Artist} | {x.FormattedDuration()}", x.YoutubeId)).Take(25)));
         }
         catch (Exception exception)
         {

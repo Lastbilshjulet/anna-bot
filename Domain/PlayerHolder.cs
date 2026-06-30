@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using anna_bot.Domain.Models;
 using anna_bot.Domain.Models.Configurations;
 using anna_bot.OutServices.UseCases;
@@ -20,7 +21,14 @@ public class PlayerHolder(ISongDbService songDbService, IOptions<MusicConfigurat
     public Player AddAndGetPlayer(ulong guildId, IAudioClient audioClient)
     {
         var logger = loggerFactory.CreateLogger<Player>();
-        return _playerHolder.GetOrAdd(guildId, new Player(songDbService, musicConfig.Value, guildId, audioClient, [.. _availableSongs], logger));
+        return _playerHolder.GetOrAdd(guildId, new Player(
+            songDbService, 
+            musicConfig.Value, 
+            guildId, 
+            audioClient, 
+            [.. _availableSongs], 
+            () => RemovePlayer(guildId), 
+            logger));
     }
     
     public void AddSong(ulong guildId, Song song, SocketTextChannel textChannel, SocketVoiceChannel voiceChannel)
@@ -37,7 +45,7 @@ public class PlayerHolder(ISongDbService songDbService, IOptions<MusicConfigurat
             }
             else if (newSong)
             {
-                player.AddUnplayed(song);
+                player.Queue.AddUnplayed(song);
             }
         }
     }
@@ -58,8 +66,9 @@ public class PlayerHolder(ISongDbService songDbService, IOptions<MusicConfigurat
         return [.. _availableSongs];
     }
 
-    public void RemovePlayer(ulong guildId)
+    public Task RemovePlayer(ulong guildId)
     {
         _playerHolder.TryRemove(guildId, out _);
+        return Task.CompletedTask;
     }
 }

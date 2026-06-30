@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using anna_bot.Domain.Models;
 using Discord;
@@ -36,6 +38,29 @@ public class MessageHelper
         });
     }
 
+    public static async Task EmbedFollowupAsync(SocketInteractionContext context, string title, Song? currentSong, List<Song> queuedSongs)
+    {
+        var user = context.User;
+        var embed = EmbedBuilder(title, user);
+
+        if (currentSong != null)
+            embed.AddField($"Currently playing: {currentSong.Title} - {currentSong.Artist}", $"{currentSong.FormattedDuration()} - Requested by {GetUsername(context.Guild, currentSong)} | [Source]({currentSong.Source})");
+        
+        foreach (var (song, i) in queuedSongs.Select((song, i) => (song, i)))
+        {
+            embed.AddField(
+                $"{i + 1}. {song.Title} - {song.Artist}", 
+                $"{song.FormattedDuration()} - Requested by {GetUsername(context.Guild, song)} | [Source]({song.Source})");
+        }
+        
+        var messageSent = await context.Interaction.FollowupAsync(embed: embed.Build(), flags: MessageFlags.SuppressNotification);
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromMinutes(10));
+            await messageSent.DeleteAsync();
+        });
+    }
+
     private static EmbedBuilder EmbedBuilder(string message, SocketUser user)
     {
         return new EmbedBuilder()
@@ -60,28 +85,13 @@ public class MessageHelper
         });
     }
 
-    public static async Task<RestUserMessage?> EmbedSendMessageAsync(SocketTextChannel textChannel, string title, Song song)
+    public static async Task<RestUserMessage?> EmbedSendMessageAsync(
+        Player player, 
+        SocketTextChannel textChannel,
+        Song song)
     {
-        // TODO: previous song
-        // TODO: repeat/loop
-        // TODO: Add emotes to buttons
-        var skipButtonBuilder = new ButtonBuilder("Skip", "SkipButton")
-            .WithStyle(ButtonStyle.Success);
-        //var pauseButtonBuilder = new ButtonBuilder("Pause", "PauseButton")
-        //    .WithStyle(ButtonStyle.Primary);
-        var disconnectButtonBuilder = new ButtonBuilder("Disconnect", "DisconnectButton")
-            .WithStyle(ButtonStyle.Danger);
+        var components = SongComponentBuilder(player, textChannel, song);
 
-        var components = new ComponentBuilderV2()
-            .WithContainer(x => x
-                .WithAccentColor(0x0600ff)
-                .WithTextDisplay($"## {title}")
-                .WithTextDisplay($"### :notes: [{song.Title} - {song.Artist}]({song.Source}) {song.FormattedDuration()}")
-                .WithSeparator( separator => separator
-                    .WithIsDivider(true)
-                    .WithSpacing(SeparatorSpacingSize.Small))
-                .WithActionRow([skipButtonBuilder, disconnectButtonBuilder]));
-        
         var messageSent = await textChannel.SendMessageAsync(components: components.Build(), flags: MessageFlags.SuppressNotification);
         _ = Task.Run(async () =>
         {
@@ -90,5 +100,76 @@ public class MessageHelper
         });
 
         return messageSent;
+    }
+
+    public static async Task EmbedSendMessageAsync(SocketMessageComponent component, Player player)
+    {
+        var currentSong = player.CurrentSong!;
+        var components = SongComponentBuilder(player, player.TextChannel!, currentSong);
+
+        await component.UpdateAsync(msg =>
+        {
+            msg.Components = components.Build();
+            msg.Flags = MessageFlags.SuppressNotification | MessageFlags.ComponentsV2;
+        });
+    }
+
+    private static ComponentBuilderV2 SongComponentBuilder(
+        Player player, 
+        SocketTextChannel textChannel, 
+        Song song)
+    {
+        var backButtonBuilder = new ButtonBuilder("Back", "BackButton")
+            .WithEmote(new Emoji("⏮️"))
+            .WithStyle(ButtonStyle.Danger);
+        ButtonBuilder pauseButtonBuilder;
+        if (player.IsPlaying)
+        {
+            pauseButtonBuilder = new ButtonBuilder("Pause", "PauseButton")
+                .WithEmote(new Emoji("⏸️"))
+                .WithStyle(ButtonStyle.Success);
+        }
+        else
+        {
+            pauseButtonBuilder = new ButtonBuilder("Play", "PlayButton")
+                .WithEmote(new Emoji("▶️"))
+                .WithStyle(ButtonStyle.Success);
+        }
+        var skipButtonBuilder = new ButtonBuilder("Skip", "SkipButton")
+            .WithEmote(new Emoji("⏭️"))
+            .WithStyle(ButtonStyle.Danger);
+        var repeatButtonBuilder = new ButtonBuilder("Repeat", "RepeatButton")
+            .WithEmote(new Emoji("🔂"))
+            .WithStyle(ButtonStyle.Success);
+        var volumeDownButtonBuilder = new ButtonBuilder("Down", "VolumeDownButton")
+            .WithEmote(new Emoji("🔉"))
+            .WithStyle(ButtonStyle.Secondary);
+        var volumeUpButtonBuilder = new ButtonBuilder("Up", "VolumeUpButton")
+            .WithEmote(new Emoji("🔊"))
+            .WithStyle(ButtonStyle.Primary);
+        var disconnectButtonBuilder = new ButtonBuilder("Disconnect", "DisconnectButton")
+            .WithEmote(new Emoji("🔌"))
+            .WithStyle(ButtonStyle.Danger);
+        
+        var title = song.IsAutoPlayed ? "Auto-Playing..." : "Now Playing...";
+        var components = new ComponentBuilderV2()
+            .WithContainer(x => x
+                .WithAccentColor(0x0600ff)
+                .WithTextDisplay($"## {title}{(player.Repeat ? " - (🔂)" : "")}{(player.Volume != 0.1f ? $" - (🔊{player.DisplayVolume})" : "")}")
+                .WithTextDisplay($"### :notes: [{song.Title} - {song.Artist}]({song.Source}) {song.FormattedDuration()}")
+                .WithTextDisplay($"Requested by: {GetUsername(textChannel.Guild, song)}")
+                .WithSeparator( separator => separator
+                    .WithIsDivider(true)
+                    .WithSpacing(SeparatorSpacingSize.Small))
+                .WithActionRow([backButtonBuilder, pauseButtonBuilder, repeatButtonBuilder, skipButtonBuilder])
+                .WithActionRow([volumeDownButtonBuilder, volumeUpButtonBuilder, disconnectButtonBuilder]));
+        return components;
+    }
+
+    private static string GetUsername(SocketGuild guild, Song song)
+    {
+        if (song.RequestedByUserId == 0)
+            return song.RequestedBy;
+        return guild.GetUser(song.RequestedByUserId)?.DisplayName ?? song.RequestedBy;
     }
 }
