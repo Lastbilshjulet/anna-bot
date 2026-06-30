@@ -41,6 +41,8 @@
       <PackageReference Include="Serilog.Settings.Configuration" Version="10.0.1" />
       <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
       <PackageReference Include="Serilog.Sinks.File" Version="8.0.0-nblumhardt-02322" />
+      <PackageReference Include="SpotifyAPI.Web" Version="7.4.2" />
+      <PackageReference Include="SpotifyAPI.Web.Auth" Version="7.4.2" />
       <PackageReference Include="YoutubeExplode" Version="6.6.1-a.1" />
       <PackageReference Include="YoutubeExplode.Converter" Version="6.6.1-a.1" />
     </ItemGroup>

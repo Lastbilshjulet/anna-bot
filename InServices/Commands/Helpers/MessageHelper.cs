@@ -44,13 +44,13 @@ public class MessageHelper
         var embed = EmbedBuilder(title, user);
 
         if (currentSong != null)
-            embed.AddField($"Currently playing: {currentSong.Title} - {currentSong.Artist}", $"{currentSong.FormattedDuration()} - Requested by {GetUsername(context.Guild, currentSong)} | [Source]({currentSong.Source})");
+            embed.AddField($"Currently playing: {currentSong.Title} - {currentSong.Artist}", $"{currentSong.FormattedDuration()} - Requested by {GetUsername(context.Guild, currentSong)} | [Source]({currentSong.GetYouTubeUrl()})");
         
         foreach (var (song, i) in queuedSongs.Select((song, i) => (song, i)))
         {
             embed.AddField(
                 $"{i + 1}. {song.Title} - {song.Artist}", 
-                $"{song.FormattedDuration()} - Requested by {GetUsername(context.Guild, song)} | [Source]({song.Source})");
+                $"{song.FormattedDuration()} - Requested by {GetUsername(context.Guild, song)} | [Source]({song.GetYouTubeUrl()})");
         }
         
         var messageSent = await context.Interaction.FollowupAsync(embed: embed.Build(), flags: MessageFlags.SuppressNotification);
@@ -156,7 +156,7 @@ public class MessageHelper
             .WithContainer(x => x
                 .WithAccentColor(0x0600ff)
                 .WithTextDisplay($"## {title}{(player.Repeat ? " - (🔂)" : "")}{(player.Volume != 0.1f ? $" - (🔊{player.DisplayVolume})" : "")}")
-                .WithTextDisplay($"### :notes: [{song.Title} - {song.Artist}]({song.Source}) {song.FormattedDuration()}")
+                .WithTextDisplay($"### :notes: [{song.Title} - {song.Artist}]({song.GetYouTubeUrl()}) {song.FormattedDuration()}")
                 .WithTextDisplay($"Requested by: {GetUsername(textChannel.Guild, song)}")
                 .WithSeparator( separator => separator
                     .WithIsDivider(true)

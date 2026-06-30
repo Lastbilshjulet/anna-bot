@@ -19,6 +19,10 @@ public class SongEntity
     public string YoutubeId { get; set; } = null!;
     
     [MaxLength(255)]
+    [Column("spotifyId", TypeName = "VARCHAR(255)")]
+    public string? SpotifyId { get; set; }
+    
+    [MaxLength(255)]
     [Column("title", TypeName = "VARCHAR(255)")]
     public string Title { get; set; } = null!;
     

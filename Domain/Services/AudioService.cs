@@ -19,22 +19,24 @@ public class AudioService(
 {
     public async Task<Song?> SearchAndFetch(string query, SocketGuildUser? guildUser)
     {
-        // TODO: Save spotifyId on each song
-        Song? song;
+        Song? song = null;
         if (youtubeService.ValidateVideoUri(query))
         {
-            logger.LogInformation("Trying to fetch youtube details for {URL}", query);
+            //TODO: Check cache of youtube ids before searching
+            logger.LogInformation("Trying to fetch youtube details for {Url}", query);
             song = await youtubeService.GetVideoDetails(query);
         }
         else if (spotifyService.ValidateTrackUri(query))
         {
-            logger.LogInformation("Trying to fetch spotify details for {URL}", query);
+            //TODO: Add and check cache of spotify ids before searching
+            logger.LogInformation("Trying to fetch spotify details for {Url}", query);
             song = await spotifyService.GetTrackDetails(query);
         }
-        else
+        
+        if (song == null || string.IsNullOrEmpty(song.YoutubeId))
         {
-            logger.LogInformation("Trying to fetch youtube video for {URL}", query);
-            song = await youtubeService.Search(query);
+            logger.LogInformation("Trying to fetch youtube video for {Query}", query);
+            song = await youtubeService.Search(query, song);
         }
 
         if (song == null)

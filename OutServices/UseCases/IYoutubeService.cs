@@ -7,7 +7,7 @@ public interface IYoutubeService
 {
     bool ValidateVideoUri(string uri);
     bool ValidatePlaylistUri(string uri);
-    Task<Song?> Search(string query);
+    Task<Song?> Search(string query, Song? song);
     Task<Song?> GetVideoDetails(string uri);
     Task<string?> DownloadSong(Song song);
 }

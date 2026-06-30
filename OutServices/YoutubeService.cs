@@ -34,8 +34,10 @@ public partial class YoutubeService(
         return PlaylistRegex().IsMatch(uri);
     }
 
-    public async Task<Song?> Search(string query)
+    public async Task<Song?> Search(string query, Song? song)
     {
+        if (song != null)
+            query = $"{song.Title} {song.Artist}";
         var searchResult = youtubeClient.Search.GetVideosAsync(query);
         var video = await searchResult.FirstOrDefaultAsync();
 
@@ -49,11 +51,12 @@ public partial class YoutubeService(
         return new Song
         {
             YoutubeId = video.Id.Value,
-            Title = video.Title,
-            Artist = video.Author.ChannelTitle,
-            Duration = video.Duration ?? TimeSpan.Zero,
+            SpotifyId = song?.SpotifyId,
+            Title = song?.Title ?? video.Title,
+            Artist = song?.Artist ?? video.Author.ChannelTitle,
+            Duration =  video.Duration ?? song?.Duration ?? TimeSpan.Zero,
             Thumbnail = thumbnailUrl,
-            Source = video.Url
+            Source = song?.Source ?? video.Url
         };
     }
 
@@ -82,7 +85,7 @@ public partial class YoutubeService(
         {
             var cleanTitle = song.CleanTitle();
             var fullPath = song.GetFullPath(musicConfig.Value.Path, musicConfig.Value.Extension);
-            await youtubeClient.Videos.DownloadAsync(song.Source, fullPath, o => o
+            await youtubeClient.Videos.DownloadAsync(song.GetYouTubeUrl(), fullPath, o => o
                 .SetContainer(musicConfig.Value.Extension.Replace(".", "")));
 
             return cleanTitle;

@@ -18,6 +18,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
+using SpotifyAPI.Web;
+using SpotifyAPI.Web.Http;
 using YoutubeExplode;
 
 var envContent = File.ReadAllLines(".env");
@@ -51,6 +53,13 @@ var discordSocketConfig = new DiscordSocketConfig()
 
 Discord.LibDave.Dave.SetLogSink(LogSink);
 
+var spotifyConfig = SpotifyClientConfig
+    .CreateDefault()
+    .WithHTTPLogger(new SimpleConsoleHTTPLogger())
+    .WithAuthenticator(new ClientCredentialsAuthenticator(configuration["Spotify:ClientId"]!, configuration["Spotify:ClientSecret"]!));
+
+var spotify = new SpotifyClient(spotifyConfig);
+
 var services = new ServiceCollection()
     .AddLogging(loggingBuilder => loggingBuilder.AddSerilog())
     .AddSingleton<IConfiguration>(configuration)
@@ -67,6 +76,7 @@ var services = new ServiceCollection()
     .AddSingleton(x => new InteractionService(x.GetRequiredService<DiscordSocketClient>()))
     .AddTransient(typeof(ICommandLogger<>), typeof(CommandLogger<>))
     .AddSingleton<YoutubeClient>()
+    .AddSingleton(spotify)
     .AddSingleton<IYoutubeService, YoutubeService>()
     .AddSingleton<ISpotifyService, SpotifyService>()
     .AddSingleton<ISongDbService, SongDbService>()

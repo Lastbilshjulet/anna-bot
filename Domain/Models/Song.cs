@@ -5,10 +5,11 @@ namespace anna_bot.Domain.Models;
 
 public partial class Song
 {
-    public string YoutubeId { get; set; } = null!;
+    public string YoutubeId { get; set; } = string.Empty;
+    public string? SpotifyId { get; set; }
     public string Title { get; set; } = null!;
     public string Artist { get; set; } = null!;
-    public string Thumbnail { get; set; } = null!;
+    public string Thumbnail { get; set; } = string.Empty;
     public string Source { get; set; } = null!;
     public string Path { get; set; } = string.Empty;
     public string Extension { get; set; } = string.Empty;
@@ -35,8 +36,10 @@ public partial class Song
         return System.IO.Path.Combine(absolutePath, $"{CleanTitle()}{Extension}");
     }
 
-    public void IncrementPlayCount() => TimesPlayed++;
-    public void IncrementAutoPlayCount() => TimesAutoPlayed++;
+    public string GetYouTubeUrl()
+    {
+        return $"https://www.youtube.com/watch?v={YoutubeId}";
+    }
     
     [GeneratedRegex(@"[^a-zA-Z0-9]")]
     private static partial Regex CleanTitleRegex();
