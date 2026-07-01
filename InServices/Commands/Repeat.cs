@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using anna_bot.Domain;
 using anna_bot.InServices.Commands.Helpers;
 using Discord.Interactions;
@@ -15,17 +16,25 @@ public class Repeat(
     [SlashCommand("repeat", "Repeats the currently playing song.")]
     public async Task RepeatAsync()
     {
-        await DeferAsync();
-        commandLogger.LogCommandCalled(Context);
+        try
+        {
+            await DeferAsync();
+            commandLogger.LogCommandCalled(Context);
         
-        var player = await validationHelper.ValidateAndGetPlayer(Context, logger, playerHolder);
-        if (player == null)
-            return;
+            var player = await validationHelper.ValidateAndGetPlayer(Context, logger, playerHolder);
+            if (player == null)
+                return;
 
-        var currentSong = player.CurrentSong;
+            var currentSong = player.CurrentSong;
 
-        var repeat = player.ToggleRepeat();
+            var repeat = player.ToggleRepeat();
         
-        await MessageHelper.EmbedFollowupAsync(Context, $"{(repeat ? "Repeating" : "Unrepeating")} {currentSong!.Title} - {currentSong.Artist} | {currentSong.FormattedDuration()}", false);
+            await MessageHelper.EmbedFollowupAsync(Context, $"{(repeat ? "Repeating" : "Unrepeating")} {currentSong!.Title} - {currentSong.Artist} | {currentSong.FormattedDuration()}", false);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to process {CommandName}", GetType().Name);
+            await MessageHelper.EmbedFollowupAsync(Context, $"Failed to process {GetType().Name}", true);
+        }
     }
 }

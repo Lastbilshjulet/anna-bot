@@ -12,27 +12,27 @@ public class Connect(ILogger<Connect> logger, ICommandLogger<Connect> commandLog
     [SlashCommand("connect", "Connects to your voice channel!")]
     public async Task ConnectAsync()
     {
-        await DeferAsync(ephemeral: true);
-        commandLogger.LogCommandCalled(Context);
-        
-        var guildUser = Context.User as SocketGuildUser;
-        var voiceChannel = guildUser?.VoiceChannel;
-
-        if (voiceChannel == null)
-        {
-            await MessageHelper.EmbedFollowupAsync(Context, "You are not connected to a voice channel.", true);
-            return;
-        }
-        
-        var audioClient = Context.Guild.AudioClient;
-        if (audioClient != null)
-        {
-            await MessageHelper.EmbedFollowupAsync(Context, "I am already connected to a voice channel.", true);
-            return;
-        }
-
         try
         {
+            await DeferAsync(ephemeral: true);
+            commandLogger.LogCommandCalled(Context);
+            
+            var guildUser = Context.User as SocketGuildUser;
+            var voiceChannel = guildUser?.VoiceChannel;
+
+            if (voiceChannel == null)
+            {
+                await MessageHelper.EmbedFollowupAsync(Context, "You are not connected to a voice channel.", true);
+                return;
+            }
+            
+            var audioClient = Context.Guild.AudioClient;
+            if (audioClient != null)
+            {
+                await MessageHelper.EmbedFollowupAsync(Context, "I am already connected to a voice channel.", true);
+                return;
+            }
+            
             logger.LogInformation("Connecting to voice channel {VoiceChannelName} ({VoiceChannelId})", voiceChannel.Name, voiceChannel.Id);
             await voiceChannel.ConnectAsync();
 
@@ -40,8 +40,8 @@ public class Connect(ILogger<Connect> logger, ICommandLogger<Connect> commandLog
         }
         catch (Exception ex)
         {
-            logger.LogError("Error connecting to voice channel: {ExMessage}", ex.Message);
-            await MessageHelper.EmbedFollowupAsync(Context, "Failed to connect to your voice channel.", true);
+            logger.LogError(ex, "Failed to process {CommandName}", GetType().Name);
+            await MessageHelper.EmbedFollowupAsync(Context, $"Failed to process {GetType().Name}", true);
         }
     }
 }

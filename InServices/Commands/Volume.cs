@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using anna_bot.Domain;
 using anna_bot.InServices.Commands.Helpers;
 using Discord.Interactions;
@@ -15,23 +16,31 @@ public class Volume(
     [SlashCommand("volume", "Responds with current volume, or sets a new value for the current song.")]
     public async Task VolumeAsync(float? volume = null)
     {
-        await DeferAsync(ephemeral: true);
-        commandLogger.LogCommandCalled(Context);
-        
-        var player = await validationHelper.ValidateAndGetPlayer(Context, logger, playerHolder);
-        if (player == null)
-            return;
-
-        var currentlySetVolume = player.Volume;
-        logger.LogInformation("Volume is currently set to: {Volume} on {SongTitle}", currentlySetVolume, player.CurrentSong!.Title);
-
-        if (!volume.HasValue)
+        try
         {
-            await MessageHelper.EmbedFollowupAsync(Context, $"Volume is set to: {player.DisplayVolume}", false);
-            return;
-        }
+            await DeferAsync(ephemeral: true);
+            commandLogger.LogCommandCalled(Context);
         
-        player.Volume = volume.Value / 100;
-        await MessageHelper.EmbedFollowupAsync(Context, $"Volume is now set to: {player.DisplayVolume}", false);
+            var player = await validationHelper.ValidateAndGetPlayer(Context, logger, playerHolder);
+            if (player == null)
+                return;
+
+            var currentlySetVolume = player.Volume;
+            logger.LogInformation("Volume is currently set to: {Volume} on {SongTitle}", currentlySetVolume, player.CurrentSong!.Title);
+
+            if (!volume.HasValue)
+            {
+                await MessageHelper.EmbedFollowupAsync(Context, $"Volume is set to: {player.DisplayVolume}", false);
+                return;
+            }
+        
+            player.Volume = volume.Value / 100;
+            await MessageHelper.EmbedFollowupAsync(Context, $"Volume is now set to: {player.DisplayVolume}", false);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to process {CommandName}", GetType().Name);
+            await MessageHelper.EmbedFollowupAsync(Context, $"Failed to process {GetType().Name}", true);
+        }
     }
 }

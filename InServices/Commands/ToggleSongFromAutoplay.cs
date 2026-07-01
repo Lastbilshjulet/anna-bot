@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
 using System.Threading.Tasks;
 using anna_bot.Domain;
 using anna_bot.InServices.Commands.Autocompleters;
@@ -18,18 +19,18 @@ public class ToggleSongFromAutoplay(
     [SlashCommand("togglesongfromautoplay", "Toggles song from autoplay!")]
     public async Task ToggleSongFromAutoplayAsync([Autocomplete(typeof(SongAutocompleteHandler))] string query)
     {
-        await DeferAsync(ephemeral: true);
-        commandLogger.LogCommandCalled(Context, query);
-        
-        var selectedSong = playerHolder.GetAllAvailableSongs().FirstOrDefault(x => x.YoutubeId == query);
-        if (selectedSong == null)
-        {
-            await MessageHelper.EmbedFollowupAsync(Context, "Song could not be found to update.", true);
-            return;
-        }
-
         try
         {
+            await DeferAsync(ephemeral: true);
+            commandLogger.LogCommandCalled(Context, query);
+            
+            var selectedSong = playerHolder.GetAllAvailableSongs().FirstOrDefault(x => x.YoutubeId == query);
+            if (selectedSong == null)
+            {
+                await MessageHelper.EmbedFollowupAsync(Context, "Song could not be found to update.", true);
+                return;
+            }
+            
             // Won't update in cached song lists in players
             logger.LogInformation("Toggling autoplay for {SelectedSongTitle}", selectedSong.Title);
             selectedSong.Autoplay = !selectedSong.Autoplay;
@@ -37,9 +38,10 @@ public class ToggleSongFromAutoplay(
         
             await MessageHelper.EmbedFollowupAsync(Context, $"Toggled autoplay for {updatedSong.Title} to {updatedSong.Autoplay}", true);
         }
-        catch 
+        catch (Exception ex)
         {
-            await MessageHelper.EmbedFollowupAsync(Context, "An error occurred while toggling autoplay.", true);
+            logger.LogError(ex, "Failed to process {CommandName}", GetType().Name);
+            await MessageHelper.EmbedFollowupAsync(Context, $"Failed to process {GetType().Name}", true);
         }
     }
 }

@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using anna_bot.Domain;
 using anna_bot.InServices.Commands.Helpers;
 using Discord.Interactions;
@@ -15,16 +16,24 @@ public class Skip(
     [SlashCommand("skip", "Skips the currently playing song.")]
     public async Task SkipAsync()
     {
-        await DeferAsync();
-        commandLogger.LogCommandCalled(Context);
+        try
+        {
+            await DeferAsync();
+            commandLogger.LogCommandCalled(Context);
         
-        var player = await validationHelper.ValidateAndGetPlayer(Context, logger, playerHolder);
-        if (player == null)
-            return;
+            var player = await validationHelper.ValidateAndGetPlayer(Context, logger, playerHolder);
+            if (player == null)
+                return;
 
-        var currentSong = player.CurrentSong;
-        await player.Skip();
+            var currentSong = player.CurrentSong;
+            await player.Skip();
         
-        await MessageHelper.EmbedFollowupAsync(Context, $"Skipping {currentSong!.Title} - {currentSong.Artist}!", false);
+            await MessageHelper.EmbedFollowupAsync(Context, $"Skipping {currentSong!.Title} - {currentSong.Artist}!", false);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to process {CommandName}", GetType().Name);
+            await MessageHelper.EmbedFollowupAsync(Context, $"Failed to process {GetType().Name}", true);
+        }
     }
 }

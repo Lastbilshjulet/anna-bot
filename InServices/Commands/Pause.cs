@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using anna_bot.Domain;
 using anna_bot.InServices.Commands.Helpers;
 using Discord.Interactions;
@@ -15,16 +16,24 @@ public class Pause(
     [SlashCommand("pause", "Pauses/Plays the current song.")]
     public async Task PauseAsync()
     {
-        await DeferAsync();
-        commandLogger.LogCommandCalled(Context);
+        try
+        {
+            await DeferAsync();
+            commandLogger.LogCommandCalled(Context);
         
-        var player = await validationHelper.ValidateAndGetPlayer(Context, logger, playerHolder);
-        if (player == null)
-            return;
+            var player = await validationHelper.ValidateAndGetPlayer(Context, logger, playerHolder);
+            if (player == null)
+                return;
 
-        var currentSong = player.CurrentSong;
-        var isPlaying = player.Pause();
+            var currentSong = player.CurrentSong;
+            var isPlaying = player.Pause();
         
-        await MessageHelper.EmbedFollowupAsync(Context, $"{(isPlaying ? "Playing" : "Paused")} {currentSong!.Title} - {currentSong.Artist} | {currentSong.FormattedDuration()}", false);
+            await MessageHelper.EmbedFollowupAsync(Context, $"{(isPlaying ? "Playing" : "Paused")} {currentSong!.Title} - {currentSong.Artist} | {currentSong.FormattedDuration()}", false);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to process {CommandName}", GetType().Name);
+            await MessageHelper.EmbedFollowupAsync(Context, $"Failed to process {GetType().Name}", true);
+        }
     }
 }

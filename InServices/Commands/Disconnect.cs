@@ -17,15 +17,14 @@ public class Disconnect(
     [SlashCommand("disconnect", "Disconnects bot from your voice channel!")]
     public async Task DisconnectAsync()
     {
-        await DeferAsync(ephemeral: true);
-        commandLogger.LogCommandCalled(Context);
-        
-        var player = await validationHelper.ValidateAndGetPlayer(Context, logger, playerHolder);
-        if (player == null)
-            return;
-
         try
         {
+            await DeferAsync(ephemeral: true);
+            commandLogger.LogCommandCalled(Context);
+            
+            var player = await validationHelper.ValidateAndGetPlayer(Context, logger, playerHolder);
+            if (player == null)
+                return;
             var voiceChannel = player.VoiceChannel;
             logger.LogInformation("Disconnecting from voice channel {VoiceChannelName} ({VoiceChannelId})", voiceChannel!.Name, voiceChannel.Id);
             
@@ -35,8 +34,8 @@ public class Disconnect(
         }
         catch (Exception ex)
         {
-            logger.LogError("Error disconnecting to voice channel: {ExMessage}", ex.Message);
-            await MessageHelper.EmbedFollowupAsync(Context, "Failed to disconnect from your voice channel.", true);
+            logger.LogError(ex, "Failed to process {CommandName}", GetType().Name);
+            await MessageHelper.EmbedFollowupAsync(Context, $"Failed to process {GetType().Name}", true);
         }
     }
 }

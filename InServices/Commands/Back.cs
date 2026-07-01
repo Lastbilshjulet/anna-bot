@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using anna_bot.Domain;
 using anna_bot.InServices.Commands.Helpers;
 using Discord.Interactions;
@@ -15,15 +16,23 @@ public class Back(
     [SlashCommand("back", "Goes back to the previously played song.")]
     public async Task BackAsync()
     {
-        await DeferAsync();
-        commandLogger.LogCommandCalled(Context);
+        try
+        {
+            await DeferAsync();
+            commandLogger.LogCommandCalled(Context);
         
-        var player = await validationHelper.ValidateAndGetPlayer(Context, logger, playerHolder);
-        if (player == null)
-            return;
+            var player = await validationHelper.ValidateAndGetPlayer(Context, logger, playerHolder);
+            if (player == null)
+                return;
 
-        await player.PlayPreviousSong();
+            await player.PlayPreviousSong();
         
-        await MessageHelper.EmbedFollowupAsync(Context, "Going back to previous song!", false);
+            await MessageHelper.EmbedFollowupAsync(Context, "Going back to previous song!", false);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to process {CommandName}", GetType().Name);
+            await MessageHelper.EmbedFollowupAsync(Context, $"Failed to process {GetType().Name}", true);
+        }
     }
 }
