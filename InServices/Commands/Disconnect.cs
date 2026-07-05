@@ -10,9 +10,8 @@ namespace anna_bot.InServices.Commands;
 
 public class Disconnect(
     ILogger<Disconnect> logger, 
-    PlayerHolder playerHolder,
-    ICommandLogger<Disconnect> commandLogger,
-    ValidationHelper validationHelper) : InteractionModuleBase<SocketInteractionContext>
+    PlayerState playerState,
+    ICommandLogger<Disconnect> commandLogger) : InteractionModuleBase<SocketInteractionContext>
 {
     [SlashCommand("disconnect", "Disconnects bot from your voice channel!")]
     public async Task DisconnectAsync()
@@ -22,7 +21,7 @@ public class Disconnect(
             await DeferAsync(ephemeral: true);
             commandLogger.LogCommandCalled(Context);
             
-            var player = await validationHelper.ValidateAndGetPlayer(Context, logger, playerHolder);
+            var player = await ValidationHelper.ValidateAndGetPlayer(Context, logger, playerState);
             if (player == null)
                 return;
             var voiceChannel = player.VoiceChannel;

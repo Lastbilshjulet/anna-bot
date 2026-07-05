@@ -8,10 +8,9 @@ using Microsoft.Extensions.Logging;
 namespace anna_bot.InServices.Commands;
 
 public class Pause(
-    PlayerHolder playerHolder,
+    PlayerState playerState,
     ILogger<Pause> logger, 
-    ICommandLogger<Pause> commandLogger,
-    ValidationHelper validationHelper) : InteractionModuleBase<SocketInteractionContext>
+    ICommandLogger<Pause> commandLogger) : InteractionModuleBase<SocketInteractionContext>
 {
     [SlashCommand("pause", "Pauses/Plays the current song.")]
     public async Task PauseAsync()
@@ -21,7 +20,7 @@ public class Pause(
             await DeferAsync();
             commandLogger.LogCommandCalled(Context);
         
-            var player = await validationHelper.ValidateAndGetPlayer(Context, logger, playerHolder);
+            var player = await ValidationHelper.ValidateAndGetPlayer(Context, logger, playerState);
             if (player == null)
                 return;
 

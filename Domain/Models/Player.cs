@@ -39,11 +39,6 @@ public class Player(
     public SocketVoiceChannel? VoiceChannel { get; private set; }
     public SocketTextChannel? TextChannel { get; private set; }
 
-    /*
-        TODO: Maybe crazy idea, but loop check against how many listeners:
-        If only bot, play elevator music. 
-        When someone joins, within a couple seconds it should keep autoplay rolling
-    */
     private void PlaySong()
     {
         if (TextChannel == null || VoiceChannel == null)
@@ -55,7 +50,8 @@ public class Player(
                 Volume = musicConfiguration.BaseVolume;
                 if (VoiceChannel.ConnectedUsers.Count <= 1)
                 {
-                    logger.LogInformation("No more listeners found");
+                    await Task.Delay(10000);
+                    continue;
                 }
                 
                 var song = Dequeue();
@@ -120,7 +116,7 @@ public class Player(
     private Song? Dequeue()
     {
         if (Repeat)
-            Queue.QueueSameSong();
+            Queue.QueueSameSongFirst();
         return Queue.Dequeue();
     }
 
@@ -148,7 +144,7 @@ public class Player(
 
     public async Task PlayPreviousSong()
     {
-        Queue.QueueFromHistory();
+        Queue.QueueFromHistoryFirst();
         await Skip();
     }
 
@@ -227,7 +223,7 @@ public class Player(
     private async Task CopyWithVolume(Stream source, Stream destination, CancellationToken cancellationToken)
     {
         // PCM s16le = 2 bytes per sample, 2 channels = 4 bytes per frame
-        const int bufferSize = 3840; // 48000 Hz * 2 ch * 2 bytes * 20ms
+        const int bufferSize = 7680; // 4 8000 Hz * 2 ch * 2 bytes * 20ms
         var buffer = new byte[bufferSize];
         var scaled = new byte[bufferSize];
 

@@ -40,6 +40,11 @@ public partial class Song
     {
         return $"https://www.youtube.com/watch?v={YoutubeId}";
     }
+
+    public string GetSpotifyUrl()
+    {
+        return $"https://open.spotify.com/track/{SpotifyId}";
+    }
     
     [GeneratedRegex(@"[^a-zA-Z0-9]")]
     private static partial Regex CleanTitleRegex();

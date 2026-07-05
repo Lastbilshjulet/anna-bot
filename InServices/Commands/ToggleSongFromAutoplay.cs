@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging;
 namespace anna_bot.InServices.Commands;
 
 public class ToggleSongFromAutoplay(
-    PlayerHolder playerHolder, 
+    PlayerState playerState, 
     ISongDbService songDbService, 
     ILogger<ToggleSongFromAutoplay> logger, 
     ICommandLogger<ToggleSongFromAutoplay> commandLogger) : InteractionModuleBase<SocketInteractionContext>
@@ -24,7 +24,7 @@ public class ToggleSongFromAutoplay(
             await DeferAsync(ephemeral: true);
             commandLogger.LogCommandCalled(Context, query);
             
-            var selectedSong = playerHolder.GetAllAvailableSongs().FirstOrDefault(x => x.YoutubeId == query);
+            var selectedSong = playerState.GetAllAvailableSongs().FirstOrDefault(x => x.YoutubeId == query);
             if (selectedSong == null)
             {
                 await MessageHelper.EmbedFollowupAsync(Context, "Song could not be found to update.", true);

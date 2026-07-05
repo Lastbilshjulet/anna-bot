@@ -28,11 +28,10 @@ public class DiscordBot(
         client.MessageDeleted += OnMessageDeleted;
         client.ButtonExecuted += buttonHandler.OnButtonExecuted;
         client.Log += Log;
+        interactionService.Log += Log;
 
         await client.LoginAsync(TokenType.Bot, discordConfig.Value.Token);
         await client.StartAsync();
-        
-        logger.LogInformation("{BotName} is connected to guilds {Guilds}", discordConfig.Value.BotName, string.Join(", ", client.Guilds.Select(x => x.Name)));
 
         await Task.Delay(-1);
     }
@@ -40,31 +39,36 @@ public class DiscordBot(
     private async Task HandleInteraction(SocketInteraction interaction)
     {
         var ctx = new SocketInteractionContext(client, interaction);
-        await interactionService.ExecuteCommandAsync(ctx, serviceProvider);
+        var result = await interactionService.ExecuteCommandAsync(ctx, serviceProvider);
+        if (!result.IsSuccess)
+            logger.LogError("Command execution failed: {Error} - {ErrorReason}", result.Error, result.ErrorReason);
     }
 
     private async Task OnReady()
     {
-        try
+        logger.LogInformation("{BotName} is ready!", discordConfig.Value.BotName);
+
+        await interactionService.AddModulesAsync(typeof(Program).Assembly, serviceProvider);
+        _ = Task.Run(async () =>
         {
-            logger.LogInformation("{BotName} is ready!", discordConfig.Value.BotName);
-        
-            await interactionService.AddModulesAsync(typeof(Program).Assembly, serviceProvider);
-            if (discordConfig.Value.RemoveCommands)
+            try
             {
-                await RemoveGlobalCommands();
-                await RemoveGuildCommands(discordConfig.Value.GuildId);
+                if (discordConfig.Value.RemoveCommands)
+                {
+                    await RemoveGlobalCommands();
+                    //await RemoveGuildCommands(discordConfig.Value.GuildId);
+                }
+                else
+                {
+                    await interactionService.RegisterCommandsGloballyAsync();
+                    //await interactionService.RegisterCommandsToGuildAsync(discordConfig.Value.GuildId);
+                }
             }
-            else
+            catch (Exception ex)
             {
-                await interactionService.RegisterCommandsGloballyAsync();
-                await interactionService.RegisterCommandsToGuildAsync(discordConfig.Value.GuildId);
+                logger.LogError(ex, "{BotName} failed to register commands", discordConfig.Value.BotName);
             }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "{BotName} failed to be ready", discordConfig.Value.BotName);
-        }
+        });
     }
 
     private async Task RemoveGuildCommands(ulong guildId)
@@ -89,7 +93,10 @@ public class DiscordBot(
 
     private Task Log(LogMessage msg)
     {
-        logger.Log(TranslateLogLevel(msg.Severity), "{BotName}: {ErrorMessage}", discordConfig.Value.BotName, msg.Message);
+        if (msg.Exception != null)
+            logger.LogError(msg.Exception, "{BotName}: An exception was thrown from the discord client", discordConfig.Value.BotName);
+        if (msg.Message != null)
+            logger.Log(TranslateLogLevel(msg.Severity), "{BotName}: {ErrorMessage}", discordConfig.Value.BotName, msg.Message);
         return Task.CompletedTask;
     }
 

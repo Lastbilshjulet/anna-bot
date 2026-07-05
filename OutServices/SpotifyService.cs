@@ -4,20 +4,25 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using anna_bot.Domain.Models;
+using anna_bot.Domain.Models.Configurations;
 using anna_bot.OutServices.UseCases;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using SpotifyAPI.Web;
 
 namespace anna_bot.OutServices;
 
 public partial class SpotifyService(
     SpotifyClient spotifyClient,
+    IOptions<SpotifyConfiguration> spotifyConfiguration,
     ILogger<SpotifyService> logger) : ISpotifyService
 {
-    [GeneratedRegex(@"^(https ?:\/\/)?(www\.)?(open\.| play\.)?spotify\.com\/.+$", RegexOptions.IgnoreCase, "sv-SE")]
+    [GeneratedRegex(@"^(https ?:\/\/)?(www\.)?(open\.|play\.)?spotify\.com\/.+$", RegexOptions.IgnoreCase, "sv-SE")]
     private static partial Regex TrackRegex();
-    [GeneratedRegex(@"^(https ?:\/\/)?(www\.)?(open\.| play\.)?spotify\.com\/ playlist\/.+$", RegexOptions.IgnoreCase, "sv-SE")]
+    [GeneratedRegex(@"^(https ?:\/\/)?(www\.)?(open\.|play\.)?spotify\.com\/playlist\/.+$", RegexOptions.IgnoreCase, "sv-SE")]
     private static partial Regex PlaylistRegex();
+    [GeneratedRegex(@"^(https ?:\/\/)?(www\.)?(open\.|play\.)?spotify\.com\/album\/.+$", RegexOptions.IgnoreCase, "sv-SE")]
+    private static partial Regex AlbumRegex();
     
     public bool ValidateTrackUri(string uri)
     {
@@ -26,13 +31,13 @@ public partial class SpotifyService(
 
     public bool ValidatePlaylistUri(string uri)
     {
-        return PlaylistRegex().IsMatch(uri);
+        return PlaylistRegex().IsMatch(uri) || AlbumRegex().IsMatch(uri);
     }
 
     public async Task<Song?> GetTrackDetails(string uri)
     {
         logger.LogInformation("Getting spotify track details for uri: {Uri}", uri);
-        var trackId = ExtractTrackId(uri);
+        var trackId = ExtractTrackId("track", uri);
         if (string.IsNullOrEmpty(trackId))
         {
             logger.LogWarning("Could not extract track id from uri: {Uri}", uri);
@@ -90,13 +95,13 @@ public partial class SpotifyService(
         return mappedTrack;
     }
 
-    private static string? ExtractTrackId(string url)
+    private static string? ExtractTrackId(string type, string url)
     {
         var patterns = new[]
         {
-            "spotify:track:([a-zA-Z0-9]+)",
-            @"open\.spotify\.com/track/([a-zA-Z0-9]+)",
-            @"spotify\.com/track/([a-zA-Z0-9]+)"
+            $"spotify:{type}:([a-zA-Z0-9]+)",
+            $@"open\.spotify\.com/{type}/([a-zA-Z0-9]+)",
+            $@"spotify\.com/{type}/([a-zA-Z0-9]+)"
         };
 
         return (from pattern 
@@ -107,9 +112,107 @@ public partial class SpotifyService(
                 select match.Groups[1].Value).FirstOrDefault();
     }
 
-    public async Task<List<Song>?> GetPlaylistDetails(string uri)
+    public async Task<List<Song>> GetPlaylistAlbumDetails(string uri)
     {
-        List<Song>? songs = null;
-        return await Task.FromResult(songs);
+        var isAlbum = AlbumRegex().IsMatch(uri);
+        logger.LogInformation("Getting spotify playlist/album details for uri: {Uri}", uri);
+        var id = ExtractTrackId(isAlbum ? "album" : "playlist", uri);
+        if (string.IsNullOrEmpty(id))
+        {
+            logger.LogWarning("Could not extract playlist/album id from uri: {Uri}", uri);
+            return [];
+        }
+
+        try
+        {
+            logger.LogInformation("Getting spotify playlist/album details for id: {TrackId}", id);
+
+            List<Song> songs;
+            if (isAlbum)
+            {
+                var request = new AlbumTracksRequest { Limit = 50 };
+                var album = await spotifyClient.Albums.GetTracks(id, request);
+                if (album.Items == null)
+                    return [];
+                
+                songs = album.Items
+                    .Where(x => x.Type == ItemType.Track)
+                    .Select(x => new Song
+                    {
+                        SpotifyId = x.Id,
+                        Artist = string.Join(", ", x.Artists.Select(a => a.Name)),
+                        Title = x.Name,
+                        Source = x.ExternalUrls["spotify"],
+                        Duration = TimeSpan.FromMilliseconds(x.DurationMs)
+                    }).ToList();
+            }
+            else
+            {
+                var request = new PlaylistGetItemsRequest { Limit = 100 };
+                var playlist = await spotifyClient.Playlists.GetPlaylistItems(id, request);
+                if (playlist.Items == null)
+                    return [];
+                
+                songs = playlist.Items
+                    .Select(x => x.Track switch
+                    {
+                        FullTrack { Type: ItemType.Track } fullTrack => new Song
+                        {
+                            SpotifyId = fullTrack.Id,
+                            Artist = string.Join(", ", fullTrack.Artists.Select(a => a.Name)),
+                            Title = fullTrack.Name,
+                            Source = fullTrack.ExternalUrls["spotify"],
+                            Duration = TimeSpan.FromMilliseconds(fullTrack.DurationMs)
+                        },
+                        _ => null
+                    })
+                    .Where(song => song != null)
+                    .ToList()!;
+            }
+
+            return songs;
+        }
+        catch (APIUnauthorizedException)
+        {
+            logger.LogError("Spotify auth failed.");
+        }
+        catch (APITooManyRequestsException)
+        {
+            logger.LogError("Sent too many requests to spotify.");
+        }
+        catch (APIException exc)
+        {
+            logger.LogError("Failed request to spotify. Message: {ExcMessage}", exc.Message);
+        }
+        
+        return [];
+    }
+
+    public async Task AddSongToPlaylistAsync(Song song)
+    {
+        try
+        {
+            var request = new PlaylistAddItemsRequest(new List<string> { CreateSpotifyTrackString(song.SpotifyId!) });
+            await spotifyClient.Playlists.AddPlaylistItems(spotifyConfiguration.Value.PlaylistId, request);
+            
+            logger.LogInformation("Added song {SongTitle} ({SpotifyId}) to spotify playlist.", song.Title, song.SpotifyId);
+        }
+        catch (APIUnauthorizedException)
+        {
+            logger.LogError("Spotify auth failed.");
+        }
+        catch (APITooManyRequestsException)
+        {
+            logger.LogError("Sent too many requests to spotify.");
+        }
+        catch (APIException exc)
+        {
+            logger.LogError("Failed request to spotify. Message: {ExcMessage}", exc.Message);
+        }
+    }
+
+    private static string CreateSpotifyTrackString(string spotifyTrackId)
+    {
+        return $"spotify:track:{spotifyTrackId}";
     }
 }

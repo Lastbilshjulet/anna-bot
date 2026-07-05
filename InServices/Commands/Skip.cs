@@ -8,10 +8,9 @@ using Microsoft.Extensions.Logging;
 namespace anna_bot.InServices.Commands;
 
 public class Skip(
-    PlayerHolder playerHolder,
+    PlayerState playerState,
     ILogger<Skip> logger, 
-    ICommandLogger<Skip> commandLogger,
-    ValidationHelper validationHelper) : InteractionModuleBase<SocketInteractionContext>
+    ICommandLogger<Skip> commandLogger) : InteractionModuleBase<SocketInteractionContext>
 {
     [SlashCommand("skip", "Skips the currently playing song.")]
     public async Task SkipAsync()
@@ -21,7 +20,7 @@ public class Skip(
             await DeferAsync();
             commandLogger.LogCommandCalled(Context);
         
-            var player = await validationHelper.ValidateAndGetPlayer(Context, logger, playerHolder);
+            var player = await ValidationHelper.ValidateAndGetPlayer(Context, logger, playerState);
             if (player == null)
                 return;
 

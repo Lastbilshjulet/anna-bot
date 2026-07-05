@@ -8,10 +8,9 @@ using Microsoft.Extensions.Logging;
 namespace anna_bot.InServices.Commands;
 
 public class Repeat(
-    PlayerHolder playerHolder,
+    PlayerState playerState,
     ILogger<Repeat> logger, 
-    ICommandLogger<Repeat> commandLogger,
-    ValidationHelper validationHelper) : InteractionModuleBase<SocketInteractionContext>
+    ICommandLogger<Repeat> commandLogger) : InteractionModuleBase<SocketInteractionContext>
 {
     [SlashCommand("repeat", "Repeats the currently playing song.")]
     public async Task RepeatAsync()
@@ -21,7 +20,7 @@ public class Repeat(
             await DeferAsync();
             commandLogger.LogCommandCalled(Context);
         
-            var player = await validationHelper.ValidateAndGetPlayer(Context, logger, playerHolder);
+            var player = await ValidationHelper.ValidateAndGetPlayer(Context, logger, playerState);
             if (player == null)
                 return;
 

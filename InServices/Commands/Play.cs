@@ -14,7 +14,7 @@ using Microsoft.Extensions.Options;
 namespace anna_bot.InServices.Commands;
 
 public class Play(
-    PlayerHolder playerHolder, 
+    PlayerState playerState, 
     IAudioService audioService, 
     ILogger<Play> logger, 
     ICommandLogger<Play> commandLogger,
@@ -48,8 +48,9 @@ public class Play(
             {
                 logger.LogInformation("Connecting to voice channel {VoiceChannelName} ({VoiceChannelId})", voiceChannel.Name, voiceChannel.Id);
                 audioClient = await voiceChannel.ConnectAsync();
-        
-                playerHolder.AddAndGetPlayer(Context.Guild.Id, audioClient);
+
+                playerState.Refresh();
+                playerState.AddAndGetPlayer(Context.Guild.Id, audioClient);
             }
             catch (Exception ex)
             {
@@ -70,10 +71,10 @@ public class Play(
 
         try
         {
-            var selectedSong = playerHolder.GetAllAvailableSongs().FirstOrDefault(x => x.YoutubeId == query);
+            var selectedSong = playerState.GetAllAvailableSongs().FirstOrDefault(x => x.YoutubeId == query);
             if (selectedSong == null)
             {
-                selectedSong = await audioService.SearchAndFetch(query, guildUser);
+                selectedSong = await audioService.SearchAndFetchAsync(query, guildUser);
                 if (selectedSong == null)
                 {
                     logger.LogInformation("No result found from query {Query}", query);
@@ -88,7 +89,7 @@ public class Play(
             }
 
             logger.LogInformation("Adding song {SongName} to the queue in {VoiceChannelName} ({VoiceChannelId})", selectedSong.Title, voiceChannel.Name, voiceChannel.Id);
-            playerHolder.AddSong(Context.Guild.Id, selectedSong, textChannel, voiceChannel);
+            playerState.AddSong(Context.Guild.Id, selectedSong, textChannel, voiceChannel);
             
             await MessageHelper.EmbedFollowupAsync(Context, $"Added {selectedSong.Title} to the queue.", false);
         }

@@ -12,7 +12,7 @@ public class SongEntity
     [Key]
     [Column("Id", TypeName = "INTEGER")]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
-    public int Id { get; set; }
+    public int Id { get; init; }
     
     [MaxLength(255)]
     [Column("ytId", TypeName = "VARCHAR(255)")]
@@ -73,7 +73,7 @@ public class SongEntity
     public bool Autoplay { get; set; } = true;
     
     [Column("createdAt", TypeName = "DATETIME")]
-    public DateTime CreatedAt { get; set; } = DateTime.Now;
+    public DateTime CreatedAt { get; init; } = DateTime.Now;
     
     [Column("updatedAt", TypeName = "DATETIME")]
     public DateTime UpdatedAt { get; set; } = DateTime.Now;

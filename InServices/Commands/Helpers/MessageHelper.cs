@@ -14,8 +14,8 @@ public class MessageHelper
 {
     public static async Task EmbedFollowupAsync(SocketInteractionContext context, string message, bool ephemeral)
     {
-        var user = context.User;
-        var embed = EmbedBuilder(message, user);
+        var user = context.User as SocketGuildUser;
+        var embed = EmbedBuilder(message, user!);
         
         var messageSent = await context.Interaction.FollowupAsync(embed: embed.Build(), ephemeral: ephemeral, flags: MessageFlags.SuppressNotification);
         _ = Task.Run(async () =>
@@ -27,8 +27,8 @@ public class MessageHelper
 
     public static async Task EmbedButtonFollowupAsync(SocketMessageComponent component, string message)
     {
-        var user = component.User;
-        var embed = EmbedBuilder(message, user);
+        var user = component.User as SocketGuildUser;
+        var embed = EmbedBuilder(message, user!);
         
         var messageSent = await component.FollowupAsync(embed: embed.Build(), flags: MessageFlags.SuppressNotification);
         _ = Task.Run(async () =>
@@ -40,8 +40,8 @@ public class MessageHelper
 
     public static async Task EmbedFollowupAsync(SocketInteractionContext context, string title, Song? currentSong, List<Song> queuedSongs)
     {
-        var user = context.User;
-        var embed = EmbedBuilder(title, user);
+        var user = context.User as SocketGuildUser;
+        var embed = EmbedBuilder(title, user!);
 
         if (currentSong != null)
             embed.AddField($"Currently playing: {currentSong.Title} - {currentSong.Artist}", $"{currentSong.FormattedDuration()} - Requested by {GetUsername(context.Guild, currentSong)} | [Source]({currentSong.GetYouTubeUrl()})");
@@ -51,6 +51,9 @@ public class MessageHelper
             embed.AddField(
                 $"{i + 1}. {song.Title} - {song.Artist}", 
                 $"{song.FormattedDuration()} - Requested by {GetUsername(context.Guild, song)} | [Source]({song.GetYouTubeUrl()})");
+            
+            if (i == 9)
+                break;
         }
         
         var messageSent = await context.Interaction.FollowupAsync(embed: embed.Build(), flags: MessageFlags.SuppressNotification);
@@ -61,13 +64,13 @@ public class MessageHelper
         });
     }
 
-    private static EmbedBuilder EmbedBuilder(string message, SocketUser user)
+    private static EmbedBuilder EmbedBuilder(string message, SocketGuildUser user)
     {
         return new EmbedBuilder()
             .WithColor(0x0600ff)
             .WithTitle(message)
             .WithTimestamp(DateTime.Now)
-            .WithFooter(x => x.WithText($"By {user.GlobalName}").WithIconUrl(user.GetDisplayAvatarUrl()));
+            .WithFooter(x => x.WithText($"By {user.DisplayName}").WithIconUrl(user.GetDisplayAvatarUrl()));
     }
 
     public static async Task EmbedSendMessageAsync(SocketTextChannel textChannel, string title)

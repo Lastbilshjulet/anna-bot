@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Threading.Tasks;
 using anna_bot.Domain;
 using anna_bot.Domain.Models.Configurations;
 using anna_bot.Domain.Services;
@@ -19,6 +20,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 using SpotifyAPI.Web;
+using SpotifyAPI.Web.Auth;
 using SpotifyAPI.Web.Http;
 using YoutubeExplode;
 
@@ -43,6 +45,45 @@ Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(configuration)
     .CreateLogger();
 
+if (args.Length > 0 && args[0] == "--spotify-auth")
+{
+    var clientId = configuration["Spotify:ClientId"]!;
+    var clientSecret = configuration["Spotify:ClientSecret"]!;
+    var tcs = new TaskCompletionSource();
+
+    var server = new EmbedIOAuthServer(new Uri("http://127.0.0.1:5543/callback"), 5543);
+    await server.Start();
+
+    server.AuthorizationCodeReceived += async (_, response) =>
+    {
+        await server.Stop();
+        var token = await new OAuthClient().RequestToken(
+            new AuthorizationCodeTokenRequest(clientId, clientSecret, response.Code, server.BaseUri)
+        );
+        Console.WriteLine($"\nRefresh token:\n{token.RefreshToken}");
+        Console.WriteLine("\nAdd this to your .env as: Spotify:RefreshToken=<token>");
+        tcs.SetResult();
+    };
+
+    var request = new LoginRequest(server.BaseUri, clientId, LoginRequest.ResponseType.Code)
+    {
+        Scope =
+        [
+            Scopes.PlaylistReadPrivate,
+            Scopes.PlaylistReadCollaborative,
+            Scopes.PlaylistModifyPublic,
+            Scopes.PlaylistModifyPrivate,
+            Scopes.UserLibraryRead,
+            Scopes.UserLibraryModify
+        ]
+    };
+
+    BrowserUtil.Open(request.ToUri());
+    Console.WriteLine("Browser opened. Waiting for Spotify authorization...");
+    await tcs.Task;
+    return;
+}
+
 var discordSocketConfig = new DiscordSocketConfig()
 {
     EnableVoiceDaveEncryption = true,
@@ -55,8 +96,14 @@ Discord.LibDave.Dave.SetLogSink(LogSink);
 
 var spotifyConfig = SpotifyClientConfig
     .CreateDefault()
-    .WithHTTPLogger(new SimpleConsoleHTTPLogger())
-    .WithAuthenticator(new ClientCredentialsAuthenticator(configuration["Spotify:ClientId"]!, configuration["Spotify:ClientSecret"]!));
+    .WithAuthenticator(new AuthorizationCodeAuthenticator(
+        configuration["Spotify:ClientId"]!,
+        configuration["Spotify:ClientSecret"]!,
+        new AuthorizationCodeTokenResponse
+        {
+            RefreshToken = configuration["Spotify:RefreshToken"]!
+        }
+    ));
 
 var spotify = new SpotifyClient(spotifyConfig);
 
@@ -65,6 +112,7 @@ var services = new ServiceCollection()
     .AddSingleton<IConfiguration>(configuration)
     .Configure<DiscordConfiguration>(configuration.GetSection("Discord").Bind)
     .Configure<MusicConfiguration>(configuration.GetSection("Music").Bind)
+    .Configure<SpotifyConfiguration>(configuration.GetSection("Spotify").Bind)
     .AddDbContextFactory<SongDbContext>(options => options.UseSqlite(configuration.GetConnectionString("SongDb")))
     .AddSingleton<SongMapper>()
     .AddSingleton<MessageHelper>()
@@ -73,15 +121,16 @@ var services = new ServiceCollection()
     .AddSingleton<SongAutocompleteHandler>()
     .AddSingleton(discordSocketConfig)
     .AddSingleton(x => new DiscordSocketClient(x.GetRequiredService<DiscordSocketConfig>()))
-    .AddSingleton(x => new InteractionService(x.GetRequiredService<DiscordSocketClient>()))
+    .AddSingleton(x => new InteractionService(x.GetRequiredService<DiscordSocketClient>(), new InteractionServiceConfig { DefaultRunMode = RunMode.Async }))
     .AddTransient(typeof(ICommandLogger<>), typeof(CommandLogger<>))
     .AddSingleton<YoutubeClient>()
     .AddSingleton(spotify)
+    .AddSingleton<IDiscordDmService, DiscordDmService>()
     .AddSingleton<IYoutubeService, YoutubeService>()
     .AddSingleton<ISpotifyService, SpotifyService>()
     .AddSingleton<ISongDbService, SongDbService>()
     .AddSingleton<IAudioService, AudioService>()
-    .AddSingleton<PlayerHolder>()
+    .AddSingleton<PlayerState>()
     .AddSingleton<DiscordBot>()
     .BuildServiceProvider();
 

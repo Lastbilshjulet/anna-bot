@@ -9,10 +9,9 @@ using Microsoft.Extensions.Logging;
 namespace anna_bot.InServices.Commands;
 
 public class History(
-    PlayerHolder playerHolder,
+    PlayerState playerState,
     ILogger<History> logger, 
-    ICommandLogger<History> commandLogger,
-    ValidationHelper validationHelper) : InteractionModuleBase<SocketInteractionContext>
+    ICommandLogger<History> commandLogger) : InteractionModuleBase<SocketInteractionContext>
 {
     [SlashCommand("history", "Displays the current history.")]
     public async Task HistoryAsync()
@@ -22,7 +21,7 @@ public class History(
             await DeferAsync();
             commandLogger.LogCommandCalled(Context);
         
-            var player = await validationHelper.ValidateAndGetPlayer(Context, logger, playerHolder);
+            var player = await ValidationHelper.ValidateAndGetPlayer(Context, logger, playerState);
             if (player == null)
                 return;
 

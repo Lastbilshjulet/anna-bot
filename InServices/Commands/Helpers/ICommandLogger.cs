@@ -1,5 +1,4 @@
-﻿using System.Text;
-using Discord.Interactions;
+﻿using Discord.Interactions;
 
 namespace anna_bot.InServices.Commands.Helpers;
 

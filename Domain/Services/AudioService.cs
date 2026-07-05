@@ -16,11 +16,12 @@ public class AudioService(
     IYoutubeService youtubeService, 
     ISpotifyService spotifyService, 
     ISongDbService songDbService,
-    PlayerHolder playerHolder, 
+    IDiscordDmService discordDmService,
+    PlayerState playerState, 
     IOptions<MusicConfiguration> musicConfig, 
     ILogger<AudioService> logger) : IAudioService
 {
-    public async Task<Song?> SearchAndFetch(string query, SocketGuildUser? guildUser)
+    public async Task<Song?> SearchAndFetchAsync(string query, SocketGuildUser? guildUser)
     {
         Song? song = null;
         List<Song> playlistSongs = [];
@@ -34,18 +35,29 @@ public class AudioService(
             song = songs.First();
             playlistSongs = songs;
         }
-        
-        if (song == null && youtubeService.ValidateVideoUri(query))
+        else if (spotifyService.ValidatePlaylistUri(query))
         {
-            //TODO: Check cache of YouTube ids before searching
-            logger.LogInformation("Trying to fetch youtube details for {Url}", query);
-            song = await youtubeService.GetVideoDetails(query);
+            logger.LogInformation("Trying to fetch spotify playlist details for {Url}", query);
+            var songs = await spotifyService.GetPlaylistAlbumDetails(query);
+            if (songs.Count == 0)
+                return null;
+            
+            song = songs.First();
+            playlistSongs = songs;
         }
-        else if (song == null && spotifyService.ValidateTrackUri(query))
+
+        if (song == null)
         {
-            //TODO: Add and check cache of spotify ids before searching
-            logger.LogInformation("Trying to fetch spotify details for {Url}", query);
-            song = await spotifyService.GetTrackDetails(query);
+            if (youtubeService.ValidateVideoUri(query))
+            {
+                logger.LogInformation("Trying to fetch youtube details for {Url}", query);
+                song = await youtubeService.GetVideoDetails(query);
+            }
+            else if (spotifyService.ValidateTrackUri(query))
+            {
+                logger.LogInformation("Trying to fetch spotify details for {Url}", query);
+                song = await spotifyService.GetTrackDetails(query);
+            }
         }
         
         if (song == null || string.IsNullOrEmpty(song.YoutubeId))
@@ -56,8 +68,6 @@ public class AudioService(
 
         if (song == null)
             return null;
-        
-        // TODO: Try to find spotifyId from YouTube video
 
         song = await ProcessSong(guildUser, song);
 
@@ -69,20 +79,47 @@ public class AudioService(
         return song;
     }
 
-    public async Task SearchSpotifyAndUpdateAsync(Song selectedSong)
+    public async Task<Song?> SearchSpotifyAndUpdateAsync(Song song)
     {
-        var spotifySong = await spotifyService.SearchTrackAsync($"{selectedSong.Title} {selectedSong.Artist}");
-        if (spotifySong == null)
-            return;
+        var spotifySong = await SearchSpotifyAsync(song);
         
-        songDbService.UpdateSpotifyId(selectedSong.YoutubeId, spotifySong.SpotifyId!);
+        return songDbService.UpdateSpotifyId(song.YoutubeId, spotifySong?.SpotifyId ?? "");
+    }
+
+    private async Task<Song?> SearchSpotifyAsync(Song song)
+    {
+        var spotifySong = await spotifyService.SearchTrackAsync($"{song.Title} {song.Artist}") ?? await spotifyService.SearchTrackAsync($"{song.Title}");
+        if (spotifySong == null)
+            return null;
+
+        if (song.Title.Contains(spotifySong.Title))
+        {
+            await spotifyService.AddSongToPlaylistAsync(spotifySong);
+            return spotifySong;
+        }
+        
+        logger.LogWarning("Song {SongTitle} ({YoutubeId}) might not match song {SpotifySongTitle} ({SpotifyId}). Will try to search for only title", song.Title, song.YoutubeId, spotifySong.Title, spotifySong.SpotifyId);
+
+        spotifySong = await spotifyService.SearchTrackAsync($"{song.Title}");
+        if (spotifySong == null)
+            return null;
+
+        if (song.Title.Contains(spotifySong.Title))
+        {
+            await spotifyService.AddSongToPlaylistAsync(spotifySong);
+            return spotifySong;
+        }
+
+        await discordDmService.SendSpotifySongMismatchNotification(song, spotifySong);
+        logger.LogWarning("Song {SongTitle} ({YoutubeId}) might not match song {SpotifySongTitle} ({SpotifyId}). Will not save id", song.Title, song.YoutubeId, spotifySong.Title, spotifySong.SpotifyId);
+        return null;
     }
 
     private async Task<Song?> ProcessSong(SocketGuildUser? guildUser, Song song)
     {
         try
         {
-            var alreadyExistingSong = playerHolder.GetAllAvailableSongs().FirstOrDefault(x => x.YoutubeId == song.YoutubeId);
+            var alreadyExistingSong = playerState.GetAllAvailableSongs().FirstOrDefault(x => x.YoutubeId == song.YoutubeId);
             if (alreadyExistingSong != null)
             {
                 if (alreadyExistingSong.SpotifyId == null)
@@ -90,21 +127,14 @@ public class AudioService(
                 return alreadyExistingSong;
             }
 
-            var downloadTask = youtubeService.DownloadSong(song);
-            var spotifyTask = song.SpotifyId == null 
-                ? spotifyService.SearchTrackAsync($"{song.Title} {song.Artist}")
-                : Task.FromResult<Song?>(null);
-
-            await Task.WhenAll(downloadTask, spotifyTask);
-
-            var path = await downloadTask;
-            var spotifySong = await spotifyTask;
-
-            song.SpotifyId ??= spotifySong?.SpotifyId;
+            var path = await youtubeService.DownloadSong(song);
             
             if (path == null)
                 return null;
 
+            var spotifySong = await SearchSpotifyAsync(song);
+            song.SpotifyId ??= spotifySong?.SpotifyId ?? "";
+            
             song.Path = path;
             song.Extension = musicConfig.Value.Extension;
             song.RequestedBy = guildUser?.Username ?? "UnknownUser";
@@ -127,14 +157,23 @@ public class AudioService(
         Player? player = null;
         foreach (var playlistSong in songList)
         {
-            var song = await ProcessSong(guildUser, playlistSong);
+            Song? song = null;
+            if (string.IsNullOrEmpty(playlistSong.YoutubeId))
+            {
+                logger.LogInformation("Trying to fetch youtube video for {SpotifyId} ({Title} - {Artist})", playlistSong.SpotifyId, playlistSong.Title, playlistSong.Artist);
+                song = await youtubeService.Search("", playlistSong);
+                if (song == null)
+                    continue;
+            }
+            
+            song = await ProcessSong(guildUser, song ?? playlistSong);
 
             player ??= await WaitForPlayerAsync(guildUser!.Guild.Id, timeoutSeconds: 30);
 
             if (song == null || player == null)
                 continue;
             
-            playerHolder.AddSong(guildUser!.Guild.Id, song, player.TextChannel!, player.VoiceChannel!);
+            playerState.AddSong(guildUser!.Guild.Id, song, player.TextChannel!, player.VoiceChannel!);
             logger.LogInformation("Added song {SongTitle} from playlist to player in guild {GuildId}", song.Title, guildUser.Guild.Id);
         }
     }
@@ -147,7 +186,7 @@ public class AudioService(
 
         while (stopwatch.Elapsed < timeoutSpan)
         {
-            var player = playerHolder.GetExistingPlayer(guildId);
+            var player = playerState.GetExistingPlayer(guildId);
             if (player != null)
                 return player;
 

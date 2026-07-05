@@ -86,7 +86,7 @@ public class SongDbService(
         if (dbSong == null)
         {
             logger.LogCritical("Song to update was not found {YoutubeId}", youtubeId);
-            throw new Exception($"Song not found, should never happen");
+            throw new Exception("Song not found, should never happen");
         }
         
         dbSong.SpotifyId = spotifyId;

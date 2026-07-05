@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 
 namespace anna_bot.Domain.Models;
 
@@ -36,19 +35,17 @@ public class SongQueue
     {
         if (Count > 0)
         {
-            var song = _queue.Last();
+            var song = _queue.First();
             song.IsAutoPlayed = false;
             _history.Add(song);
-            _queue.RemoveLast();
+            _queue.RemoveFirst();
             _unPlayed.Remove(song);
             return song;
         }
 
         if (UnPlayedCount > 0)
         {
-            var nextUnplayedIndex = Random.Shared.Next(_unPlayed.Count);
-            Console.WriteLine(nextUnplayedIndex);
-            var song = _unPlayed.ElementAt(nextUnplayedIndex);
+            var song = _unPlayed.ElementAt(Random.Shared.Next(_unPlayed.Count));
             song.IsAutoPlayed = true;
             _unPlayed.Remove(song);
             _history.Add(song);
@@ -58,7 +55,7 @@ public class SongQueue
         return null;
     }
     
-    public void QueueFromHistory()
+    public void QueueFromHistoryFirst()
     {
         if (HistoryCount <= 1)
             return;
@@ -66,7 +63,7 @@ public class SongQueue
         _queue.AddFirst(_history[^2]);
     }
 
-    public void QueueSameSong()
+    public void QueueSameSongFirst()
     {
         if (HistoryCount == 0)
             return;

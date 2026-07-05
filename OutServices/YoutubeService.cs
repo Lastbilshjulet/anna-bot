@@ -36,13 +36,16 @@ public partial class YoutubeService(
 
     public async Task<Song?> Search(string query, Song? song)
     {
-        if (song != null)
+        if (song != null && string.IsNullOrEmpty(song.YoutubeId))
             query = $"{song.Title} {song.Artist}";
         var searchResult = youtubeClient.Search.GetVideosAsync(query);
         var video = await searchResult.FirstOrDefaultAsync();
 
         if (video == null)
+        {
+            logger.LogWarning("No video found from query: {Query}", query);
             return null;
+        }
 
         var thumbnailUrl = string.Empty;
         if (video.Thumbnails.Count > 0)
@@ -100,6 +103,9 @@ public partial class YoutubeService(
     {
         try
         {
+            if (string.IsNullOrEmpty(song.YoutubeId))
+                return null;
+
             var cleanTitle = song.CleanTitle();
             var fullPath = song.GetFullPath(musicConfig.Value.Path, musicConfig.Value.Extension);
             await youtubeClient.Videos.DownloadAsync(song.GetYouTubeUrl(), fullPath, o => o
@@ -109,7 +115,7 @@ public partial class YoutubeService(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error downloading song {SongTitle} ({YoutubeId}), requested by {RequestedBy}", song.Title, song.YoutubeId, song.RequestedBy);
+            logger.LogError(ex, "Error downloading song {SongTitle} ({YoutubeId})", song.Title, song.YoutubeId);
             return null;
         }
     }

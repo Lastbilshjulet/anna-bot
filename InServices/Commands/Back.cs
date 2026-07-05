@@ -8,10 +8,9 @@ using Microsoft.Extensions.Logging;
 namespace anna_bot.InServices.Commands;
 
 public class Back(
-    PlayerHolder playerHolder,
+    PlayerState playerState,
     ILogger<Back> logger, 
-    ICommandLogger<Back> commandLogger,
-    ValidationHelper validationHelper) : InteractionModuleBase<SocketInteractionContext>
+    ICommandLogger<Back> commandLogger) : InteractionModuleBase<SocketInteractionContext>
 {
     [SlashCommand("back", "Goes back to the previously played song.")]
     public async Task BackAsync()
@@ -21,7 +20,7 @@ public class Back(
             await DeferAsync();
             commandLogger.LogCommandCalled(Context);
         
-            var player = await validationHelper.ValidateAndGetPlayer(Context, logger, playerHolder);
+            var player = await ValidationHelper.ValidateAndGetPlayer(Context, logger, playerState);
             if (player == null)
                 return;
 

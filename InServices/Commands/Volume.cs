@@ -8,10 +8,9 @@ using Microsoft.Extensions.Logging;
 namespace anna_bot.InServices.Commands;
 
 public class Volume(
-    PlayerHolder playerHolder,
+    PlayerState playerState,
     ILogger<Volume> logger, 
-    ICommandLogger<Volume> commandLogger,
-    ValidationHelper validationHelper) : InteractionModuleBase<SocketInteractionContext>
+    ICommandLogger<Volume> commandLogger) : InteractionModuleBase<SocketInteractionContext>
 {
     [SlashCommand("volume", "Responds with current volume, or sets a new value for the current song.")]
     public async Task VolumeAsync(float? volume = null)
@@ -19,9 +18,9 @@ public class Volume(
         try
         {
             await DeferAsync(ephemeral: true);
-            commandLogger.LogCommandCalled(Context);
+            commandLogger.LogCommandCalled(Context, volume?.ToString() ?? "No volume option");
         
-            var player = await validationHelper.ValidateAndGetPlayer(Context, logger, playerHolder);
+            var player = await ValidationHelper.ValidateAndGetPlayer(Context, logger, playerState);
             if (player == null)
                 return;
 

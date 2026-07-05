@@ -8,10 +8,9 @@ using Microsoft.Extensions.Logging;
 namespace anna_bot.InServices.Commands;
 
 public class Queue(
-    PlayerHolder playerHolder,
+    PlayerState playerState,
     ILogger<Queue> logger, 
-    ICommandLogger<Queue> commandLogger,
-    ValidationHelper validationHelper) : InteractionModuleBase<SocketInteractionContext>
+    ICommandLogger<Queue> commandLogger) : InteractionModuleBase<SocketInteractionContext>
 {
     [SlashCommand("queue", "Displays the current queue.")]
     public async Task QueueAsync()
@@ -21,7 +20,7 @@ public class Queue(
             await DeferAsync();
             commandLogger.LogCommandCalled(Context);
             
-            var player = await validationHelper.ValidateAndGetPlayer(Context, logger, playerHolder);
+            var player = await ValidationHelper.ValidateAndGetPlayer(Context, logger, playerState);
             if (player == null)
                 return;
 

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using anna_bot.Domain.Models;
 using anna_bot.Domain.Models.Configurations;
+using anna_bot.Domain.Services;
 using anna_bot.OutServices.UseCases;
 using Discord.Audio;
 using Discord.WebSocket;
@@ -12,11 +13,10 @@ using Microsoft.Extensions.Options;
 
 namespace anna_bot.Domain;
 
-// Find a better name than PlayerHolder? Holds global state for music
-public class PlayerHolder(ISongDbService songDbService, IOptions<MusicConfiguration> musicConfig, ILoggerFactory loggerFactory)
+public class PlayerState(ISongDbService songDbService, IOptions<MusicConfiguration> musicConfig, ILoggerFactory loggerFactory)
 {
     private readonly ConcurrentDictionary<ulong, Player> _playerHolder = [];
-    private readonly List<Song> _availableSongs = songDbService.GetAllSongs();
+    private List<Song> _availableSongs = songDbService.GetAllSongs();
 
     public Player AddAndGetPlayer(ulong guildId, IAudioClient audioClient)
     {
@@ -66,9 +66,14 @@ public class PlayerHolder(ISongDbService songDbService, IOptions<MusicConfigurat
         return [.. _availableSongs];
     }
 
-    public Task RemovePlayer(ulong guildId)
+    private Task RemovePlayer(ulong guildId)
     {
         _playerHolder.TryRemove(guildId, out _);
         return Task.CompletedTask;
+    }
+
+    public void Refresh()
+    {
+        _availableSongs = songDbService.GetAllSongs();
     }
 }

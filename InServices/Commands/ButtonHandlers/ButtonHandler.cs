@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 
 namespace anna_bot.InServices.Commands.ButtonHandlers;
 
-public class ButtonHandler(PlayerHolder playerHolder, ILogger<ButtonHandler> logger)
+public class ButtonHandler(PlayerState playerState, ILogger<ButtonHandler> logger)
 {
     public async Task OnButtonExecuted(SocketMessageComponent component)
     {
@@ -18,7 +18,7 @@ public class ButtonHandler(PlayerHolder playerHolder, ILogger<ButtonHandler> log
             var player = await GetPlayer(component);
             if (player == null)
                 return;
-
+            
             switch (component.Data.CustomId)
             {
                 case "BackButton":
@@ -123,7 +123,7 @@ public class ButtonHandler(PlayerHolder playerHolder, ILogger<ButtonHandler> log
         var guildId = component.GuildId;
         if (guildId.HasValue)
         {
-            var player = playerHolder.GetExistingPlayer(guildId.Value);
+            var player = playerState.GetExistingPlayer(guildId.Value);
 
             if (player == null)
             {

@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 
 namespace anna_bot.InServices.Commands.Autocompleters;
 
-public class SongAutocompleteHandler(PlayerHolder playerHolder, ILogger<SongAutocompleteHandler> logger) : AutocompleteHandler
+public class SongAutocompleteHandler(PlayerState playerState, ILogger<SongAutocompleteHandler> logger) : AutocompleteHandler
 {
     public override Task<AutocompletionResult> GenerateSuggestionsAsync(
         IInteractionContext context, 
@@ -25,7 +25,7 @@ public class SongAutocompleteHandler(PlayerHolder playerHolder, ILogger<SongAuto
 
             logger.LogInformation("Autocompleting songs from {Query}", userInput);
 
-            var songs = playerHolder.GetAllAvailableSongs();
+            var songs = playerState.GetAllAvailableSongs();
             if (userInput != string.Empty)
                 songs = songs.Where(x => x.Title.Contains(userInput, StringComparison.OrdinalIgnoreCase) || x.Artist.Contains(userInput, StringComparison.OrdinalIgnoreCase)).ToList();
         

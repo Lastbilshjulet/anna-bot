@@ -9,7 +9,7 @@ namespace anna_bot.InServices.Commands.Helpers;
 
 public class ValidationHelper
 {
-    public async Task<Player?> ValidateAndGetPlayer(SocketInteractionContext context, ILogger logger, PlayerHolder playerHolder)
+    public static async Task<Player?> ValidateAndGetPlayer(SocketInteractionContext context, ILogger logger, PlayerState playerState)
     {
         var guildUser = context.User as SocketGuildUser;
         var voiceChannel = guildUser?.VoiceChannel;
@@ -20,7 +20,7 @@ public class ValidationHelper
             return null;
         }
 
-        var player = playerHolder.GetExistingPlayer(context.Guild.Id);
+        var player = playerState.GetExistingPlayer(context.Guild.Id);
         if (player?.CurrentSong is null)
         {
             logger.LogError("Player not found for guild {GuildId}", context.Guild.Id);
