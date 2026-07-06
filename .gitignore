@@ -63,4 +63,4 @@ nunit-*.xml
 logs/
 
 Songs/
-Deploy/
+deploy/

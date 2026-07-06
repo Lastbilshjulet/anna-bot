@@ -92,7 +92,7 @@ public class AudioService(
         if (spotifySong == null)
             return null;
 
-        if (song.Title.Contains(spotifySong.Title))
+        if (song.Title.Contains(spotifySong.Title, StringComparison.CurrentCultureIgnoreCase))
         {
             await spotifyService.AddSongToPlaylistAsync(spotifySong);
             return spotifySong;
@@ -104,7 +104,7 @@ public class AudioService(
         if (spotifySong == null)
             return null;
 
-        if (song.Title.Contains(spotifySong.Title))
+        if (song.Title.Contains(spotifySong.Title, StringComparison.CurrentCultureIgnoreCase))
         {
             await spotifyService.AddSongToPlaylistAsync(spotifySong);
             return spotifySong;

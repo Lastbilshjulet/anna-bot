@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Threading.Tasks;
 using anna_bot.Domain;
 using anna_bot.Domain.Services;
@@ -26,12 +27,9 @@ public class SearchSpotifyAndAddToPlaylist(
             {
                 var allSongs = playerState.GetAllAvailableSongs();
 
-                foreach (var song in allSongs)
+                foreach (var song in allSongs.Where(song => string.IsNullOrEmpty(song.SpotifyId)))
                 {
-                    if (song.SpotifyId == null)
-                    {
-                        await audioService.SearchSpotifyAndUpdateAsync(song);
-                    }
+                    await audioService.SearchSpotifyAndUpdateAsync(song);
 
                     await Task.Delay(5000);
                 }
