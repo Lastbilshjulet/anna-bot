@@ -189,8 +189,15 @@ public class Player(
 
     private async Task DeleteMessageAsync()
     {
-        if (_currentMessage != null)
-            await _currentMessage.DeleteAsync();
+        try
+        {
+            if (_currentMessage != null)
+                await _currentMessage.DeleteAsync();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Error deleting message, probably already deleted.");
+        }
     }
 
     private async Task StreamAudioFromFile(string filePath, CancellationToken cancellationToken = default)
