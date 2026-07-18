@@ -76,4 +76,12 @@ public class PlayerState(ISongDbService songDbService, IOptions<MusicConfigurati
     {
         _availableSongs = songDbService.GetAllSongs();
     }
+
+    public async Task ReconnectPlayers()
+    {
+        foreach (var player in GetAllExistingPlayers())
+        {
+            await player.Reconnect();
+        }
+    }
 }

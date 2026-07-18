@@ -1,6 +1,7 @@
 ﻿using System;
-using System.Linq;
+using System.Net.WebSockets;
 using System.Threading.Tasks;
+using anna_bot.Domain;
 using anna_bot.Domain.Models.Configurations;
 using anna_bot.InServices.Commands.ButtonHandlers;
 using Discord;
@@ -17,6 +18,7 @@ public class DiscordBot(
     DiscordSocketClient client,
     InteractionService interactionService,
     ButtonHandler buttonHandler,
+    PlayerState playerState,
     ILogger<DiscordBot> logger)
 {
     public async Task RunAsync()
@@ -91,13 +93,19 @@ public class DiscordBot(
         }
     }
 
-    private Task Log(LogMessage msg)
+    private async Task Log(LogMessage msg)
     {
         if (msg.Exception != null)
+        {
             logger.LogError(msg.Exception, "{BotName}: An exception was thrown from the discord client", discordConfig.Value.BotName);
+            if (msg.Exception is WebSocketException && msg.Exception.Message.Contains("WebSocket connection was closed"))
+            {
+                await playerState.ReconnectPlayers();
+            }
+        }
+        
         if (msg.Message != null)
             logger.Log(TranslateLogLevel(msg.Severity), "{BotName}: {ErrorMessage}", discordConfig.Value.BotName, msg.Message);
-        return Task.CompletedTask;
     }
 
     private static LogLevel TranslateLogLevel(LogSeverity severity)

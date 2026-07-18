@@ -27,6 +27,9 @@ public class Player(
     private CancellationTokenSource? _currentSongCts;
     private RestUserMessage? _currentMessage;
     private readonly ManualResetEvent _pauseEvent = new(true);
+    private IAudioClient _audioClient = audioClient;
+    private Task _playingTask = Task.CompletedTask;
+    private Song? _lastPlayedSong;
 
     public readonly SongQueue Queue = new(availableSongs);
     public ulong GuildId { get; } = guildId;
@@ -44,7 +47,7 @@ public class Player(
         if (TextChannel == null || VoiceChannel == null)
             return;
         
-        _ = Task.Run(async () => {
+        _playingTask = Task.Run(async () => {
             do
             {
                 Volume = musicConfiguration.BaseVolume;
@@ -56,6 +59,7 @@ public class Player(
                 
                 var song = Dequeue();
                 CurrentSong = song;
+                _lastPlayedSong = song;
 
                 if (song == null)
                 {
@@ -176,6 +180,31 @@ public class Player(
         return Repeat;
     }
 
+    public async Task Reconnect()
+    {
+        logger.LogInformation("Trying to reconnect");
+        await DeleteMessageAsync();
+
+        if (VoiceChannel != null)
+        {
+            logger.LogInformation("Disconnecting from VoiceChannel");
+            await VoiceChannel.DisconnectAsync();
+            logger.LogInformation("Reconnecting to VoiceChannel");
+            _audioClient = await VoiceChannel.ConnectAsync();
+            
+            if (_lastPlayedSong != null)
+            {
+                logger.LogInformation("Playing LastPlayedSong again");
+                Queue.Enqueue(_lastPlayedSong);
+                Queue.Cut();
+            }
+            
+            _playingTask.Dispose();
+
+            PlaySong();
+        }
+    }
+
     public async Task DisconnectAsync()
     {
         if (VoiceChannel != null)
@@ -203,7 +232,7 @@ public class Player(
     private async Task StreamAudioFromFile(string filePath, CancellationToken cancellationToken = default)
     {
         using var ffmpeg = CreateFFmpegStream(filePath);
-        await using var audioStream = audioClient.CreatePCMStream(AudioApplication.Mixed);
+        await using var audioStream = _audioClient.CreatePCMStream(AudioApplication.Mixed);
 
         try
         {
