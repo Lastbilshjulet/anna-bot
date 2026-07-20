@@ -193,7 +193,14 @@ public class Player(
             await Task.Delay(2500);
             
             logger.LogInformation("Disconnecting from VoiceChannel");
-            await VoiceChannel.DisconnectAsync();
+            try
+            {
+                await VoiceChannel.DisconnectAsync();
+            }
+            catch
+            {
+                // ignored
+            }
 
             await Task.Delay(2500);
             
