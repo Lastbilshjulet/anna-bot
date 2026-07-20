@@ -187,10 +187,20 @@ public class Player(
 
         if (VoiceChannel != null)
         {
+            logger.LogInformation("Disposing of playing task");
+            _playingTask.Dispose();
+
+            await Task.Delay(2500);
+            
             logger.LogInformation("Disconnecting from VoiceChannel");
             await VoiceChannel.DisconnectAsync();
+
+            await Task.Delay(2500);
+            
             logger.LogInformation("Reconnecting to VoiceChannel");
             _audioClient = await VoiceChannel.ConnectAsync();
+
+            await Task.Delay(2500);
             
             if (_lastPlayedSong != null)
             {
@@ -198,8 +208,6 @@ public class Player(
                 Queue.Enqueue(_lastPlayedSong);
                 Queue.Cut();
             }
-            
-            _playingTask.Dispose();
 
             PlaySong();
         }
