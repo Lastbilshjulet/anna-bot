@@ -132,8 +132,11 @@ public class AudioService(
             if (path == null)
                 return null;
 
-            var spotifySong = await SearchSpotifyAsync(song);
-            song.SpotifyId ??= spotifySong?.SpotifyId ?? "";
+            if (song.SpotifyId == null)
+            {
+                var spotifySong = await SearchSpotifyAsync(song);
+                song.SpotifyId = spotifySong?.SpotifyId ?? "";
+            }
             
             song.Path = path;
             song.Extension = musicConfig.Value.Extension;
