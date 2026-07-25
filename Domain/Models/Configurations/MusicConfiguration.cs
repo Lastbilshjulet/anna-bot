@@ -12,4 +12,7 @@ public class MusicConfiguration
 
     [Required]
     public float BaseVolume { get; set; } = 0.1f;
+
+    [Required]
+    public string AlbumGenerator { get; set; } = null!;
 }
