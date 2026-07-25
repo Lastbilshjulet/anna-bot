@@ -159,7 +159,7 @@ public class MessageHelper
             .WithContainer(x => x
                 .WithAccentColor(0x0600ff)
                 .WithTextDisplay($"## {title}{(player.Repeat ? " - (🔂)" : "")}{(player.Volume != 0.1f ? $" - (🔊{player.DisplayVolume})" : "")}")
-                .WithTextDisplay($"### :notes: [{song.Title} - {song.Artist}]({song.GetYouTubeUrl()}) {song.FormattedDuration()}")
+                .WithTextDisplay($"### :notes: [{song.Title} - {song.Artist}]({song.GetYouTubeUrl()}){(string.IsNullOrEmpty(song.SpotifyId) ? "" : $" | [Spotify]({song.GetSpotifyUrl()})")} {song.FormattedDuration()}")
                 .WithTextDisplay($"Requested by: {GetUsername(textChannel.Guild, song)}")
                 .WithSeparator( separator => separator
                     .WithIsDivider(true)
