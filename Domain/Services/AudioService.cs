@@ -137,6 +137,10 @@ public class AudioService(
                 var spotifySong = await SearchSpotifyAsync(song);
                 song.SpotifyId = spotifySong?.SpotifyId ?? "";
             }
+            else
+            {
+                await spotifyService.AddSongToPlaylistAsync(song);
+            }
             
             song.Path = path;
             song.Extension = musicConfig.Value.Extension;
