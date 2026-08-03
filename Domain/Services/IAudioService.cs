@@ -8,4 +8,5 @@ public interface IAudioService
 {
     Task<Song?> SearchAndFetchAsync(string query, SocketGuildUser? guildUser);
     Task<Song?> SearchSpotifyAndUpdateAsync(Song song);
+    Task SyncPlaylist();
 }

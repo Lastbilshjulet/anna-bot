@@ -12,4 +12,5 @@ public interface ISpotifyService
     Task<Song?> SearchTrackAsync(string query);
     Task<List<Song>> GetPlaylistAlbumDetails(string uri);
     Task AddSongToPlaylistAsync(Song song);
+    Task SyncPlaylist(HashSet<string> spotifyIds);
 }

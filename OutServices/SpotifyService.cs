@@ -190,12 +190,19 @@ public partial class SpotifyService(
 
     public async Task AddSongToPlaylistAsync(Song song)
     {
+        await AddSongToPlaylistAsync([CreateSpotifyTrackString(song.SpotifyId!)]);
+        
+        logger.LogInformation("Added song {SongTitle} ({SpotifyId}) to spotify playlist.", song.Title, song.SpotifyId);
+    }
+
+    private async Task AddSongToPlaylistAsync(List<string> spotifyTrackStrings)
+    {
         try
         {
-            var request = new PlaylistAddItemsRequest(new List<string> { CreateSpotifyTrackString(song.SpotifyId!) });
+            var request = new PlaylistAddItemsRequest(spotifyTrackStrings);
             await spotifyClient.Playlists.AddPlaylistItems(spotifyConfiguration.Value.PlaylistId, request);
-            
-            logger.LogInformation("Added song {SongTitle} ({SpotifyId}) to spotify playlist.", song.Title, song.SpotifyId);
+        
+            logger.LogInformation("Added {SongCount} songs to spotify playlist.", spotifyTrackStrings.Count);
         }
         catch (APIUnauthorizedException)
         {
@@ -208,6 +215,27 @@ public partial class SpotifyService(
         catch (APIException exc)
         {
             logger.LogError("Failed request to spotify. Message: {ExcMessage}", exc.Message);
+        }
+    }
+
+    public async Task SyncPlaylist(HashSet<string> spotifyIds)
+    {
+        var playlistPages = await spotifyClient.Playlists.GetPlaylistItems(spotifyConfiguration.Value.PlaylistId);
+        List<string> idsInPlaylist = [];
+        
+        await foreach (var song in spotifyClient.Paginate(playlistPages))
+        {
+            if (song.Track is FullTrack track)
+            {
+                idsInPlaylist.Add(track.Id);
+            }
+        }
+        
+        var itemsToAdd = spotifyIds.Except(idsInPlaylist).ToList();
+        
+        if (itemsToAdd.Count > 0)
+        {
+            await AddSongToPlaylistAsync(itemsToAdd.Select(CreateSpotifyTrackString).ToList());
         }
     }
 

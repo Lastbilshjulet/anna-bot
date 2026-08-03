@@ -86,6 +86,17 @@ public class AudioService(
         return songDbService.UpdateSpotifyId(song.YoutubeId, spotifySong?.SpotifyId ?? "");
     }
 
+    public async Task SyncPlaylist()
+    {
+        var allSongs = songDbService.GetAllSongs();
+        var spotifyIds = allSongs
+            .Where(s => !string.IsNullOrEmpty(s.SpotifyId))
+            .Select(s => s.SpotifyId!)
+            .ToHashSet();
+        
+        await spotifyService.SyncPlaylist(spotifyIds);
+    }
+
     private async Task<Song?> SearchSpotifyAsync(Song song)
     {
         var spotifySong = await spotifyService.SearchTrackAsync($"{song.Title} {song.Artist}") ?? await spotifyService.SearchTrackAsync($"{song.Title}");
