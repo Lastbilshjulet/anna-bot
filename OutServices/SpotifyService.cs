@@ -199,10 +199,14 @@ public partial class SpotifyService(
     {
         try
         {
-            var request = new PlaylistAddItemsRequest(spotifyTrackStrings);
-            await spotifyClient.Playlists.AddPlaylistItems(spotifyConfiguration.Value.PlaylistId, request);
+            for (var i = 0; i < spotifyTrackStrings.Count; i += 100)
+            {
+                var listPart = spotifyTrackStrings.Skip(i).Take(100).ToList();
+                var request = new PlaylistAddItemsRequest(listPart);
+                await spotifyClient.Playlists.AddPlaylistItems(spotifyConfiguration.Value.PlaylistId, request);
         
-            logger.LogInformation("Added {SongCount} songs to spotify playlist.", spotifyTrackStrings.Count);
+                logger.LogInformation("Added {SongCount} songs to spotify playlist.", listPart.Count);
+            }
         }
         catch (APIUnauthorizedException)
         {
