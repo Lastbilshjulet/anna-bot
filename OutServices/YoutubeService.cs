@@ -1,11 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using anna_bot.Domain.Models;
 using anna_bot.Domain.Models.Configurations;
 using anna_bot.OutServices.UseCases;
+using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using YoutubeExplode;
@@ -99,7 +101,7 @@ public partial class YoutubeService(
             .ToListAsync();
     }
 
-    public async Task<string?> DownloadSong(Song song)
+    public async Task<string?> DownloadSongOld(Song song)
     {
         try
         {
@@ -118,5 +120,52 @@ public partial class YoutubeService(
             logger.LogError(ex, "Error downloading song {SongTitle} ({YoutubeId})", song.Title, song.YoutubeId);
             return null;
         }
+    }
+
+    public async Task<string?> DownloadSong(Song song)
+    {
+        try
+        {
+            using var process = GetDownloadProcess(song);
+            var output = await process.StandardOutput.ReadToEndAsync();
+            await process.WaitForExitAsync();
+
+            if (process.ExitCode == 0)
+            {
+                Console.WriteLine($"Download completed successfully: {song.Path}");
+                Console.WriteLine($"Process output: {output}");
+                song.GetFullPath(musicConfig.Value.Path, musicConfig.Value.Extension);
+                return song.CleanTitle();
+            }
+            
+            var error = await process.StandardError.ReadToEndAsync();
+            Console.WriteLine($"Download failed with exit code {process.ExitCode}: {error}");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error downloading {musicConfig.Value.Extension} from uri: {song.GetYouTubeUrl()} Error: {ex.Message}");
+            return null;
+        }
+    }
+
+    private Process GetDownloadProcess(Song song)
+    {
+        var fullPath = song.GetFullPath(musicConfig.Value.Path, musicConfig.Value.Extension);
+        var url = song.GetYouTubeUrl();
+        var process = new ProcessStartInfo
+        {
+            FileName = "yt-dlp",
+            Arguments = $" -x --audio-format {musicConfig.Value.Extension} -o \"{fullPath}\" \"{url}\"",
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        } ?? throw new Exception("GetDownloadProcess creation failed.");
+
+        Console.WriteLine($"Starting download of {url} to {fullPath}");
+        var processResult = Process.Start(process);
+
+        return processResult ?? throw new Exception("GetDownloadProcess start failed.");
     }
 }
