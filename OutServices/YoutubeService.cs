@@ -156,7 +156,7 @@ public partial class YoutubeService(
         var process = new ProcessStartInfo
         {
             FileName = "yt-dlp",
-            Arguments = $" -x --audio-format {musicConfig.Value.Extension} -o \"{fullPath}\" \"{url}\"",
+            Arguments = $" -x --audio-format {musicConfig.Value.Extension.Replace(".", "")} -o \"{fullPath}\" \"{url}\"",
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
