@@ -21,15 +21,26 @@ public class Player(
     IAudioClient audioClient,
     List<Song> availableSongs,
     Func<Task> onPlaybackEnded,
-    ILogger<Player> logger)
+    ILogger<Player> logger) : IAsyncDisposable
 {
     private readonly Lock _lock = new();
+
+    // Lifetime token: cancels everything (including the "waiting for listeners" delay)
+    // when the player is torn down, instead of only being able to cancel the current song.
+    private readonly CancellationTokenSource _lifetimeCts = new();
+
     private CancellationTokenSource? _currentSongCts;
     private RestUserMessage? _currentMessage;
-    private readonly ManualResetEvent _pauseEvent = new(true);
+
+    // Async-friendly pause gate. When null, playback is not paused.
+    // When set, the streaming loop awaits this task instead of blocking a thread.
+    private volatile TaskCompletionSource<bool>? _pauseTcs;
+
     private IAudioClient _audioClient = audioClient;
     private Task _playingTask = Task.CompletedTask;
     private Song? _lastPlayedSong;
+    private bool _playbackLoopRunning;
+    private int _disposed; // 0 = false, 1 = true; guarded with Interlocked, see DisposeAsync
 
     public readonly SongQueue Queue = new(availableSongs);
     public ulong GuildId { get; } = guildId;
@@ -45,75 +56,97 @@ public class Player(
     private void PlaySong()
     {
         if (TextChannel == null || VoiceChannel == null)
+        {
+            lock (_lock) _playbackLoopRunning = false;
             return;
-        
-        _playingTask = Task.Run(async () => {
-            do
+        }
+
+        _playingTask = Task.Run(async () =>
+        {
+            try
             {
-                Volume = musicConfiguration.BaseVolume;
-                if (VoiceChannel.ConnectedUsers.Count <= 1)
+                do
                 {
-                    await Task.Delay(10000);
-                    continue;
-                }
-                
-                var song = Dequeue();
-                CurrentSong = song;
-                _lastPlayedSong = song;
-
-                if (song == null)
-                {
-                    logger.LogInformation("No more songs found to play.");
-                    await MessageHelper.EmbedSendMessageAsync(TextChannel!, "No more songs found to play.");
-                    await DisconnectAsync();
-                    return;
-                }
-                
-                var songPath = song.GetFullPath(musicConfiguration.Path);
-                if (!File.Exists(songPath))
-                {
-                    logger.LogError("Song file could not be fond on {Path}", songPath);
-                    break;
-                }
-                
-                try
-                {
-                    IsPlaying = true;
-                    _pauseEvent.Set();
-
-                    lock (_lock)
+                    Volume = musicConfiguration.BaseVolume;
+                    if (VoiceChannel.ConnectedUsers.Count <= 1)
                     {
-                        _currentSongCts?.Dispose();
-                        _currentSongCts = new CancellationTokenSource();
+                        // Honor the lifetime token so this doesn't keep the loop alive
+                        // for up to 10s after a disconnect/dispose.
+                        await Task.Delay(10000, _lifetimeCts.Token);
+                        continue;
                     }
 
-                    if (TextChannel != null)
+                    var song = Dequeue();
+                    CurrentSong = song;
+                    _lastPlayedSong = song;
+
+                    if (song == null)
                     {
-                        _currentMessage = await MessageHelper.EmbedSendMessageAsync(this, TextChannel!, song);
+                        logger.LogInformation("No more songs found to play.");
+                        await MessageHelper.EmbedSendMessageAsync(TextChannel!, "No more songs found to play.");
+                        await DisconnectAsync();
+                        return;
                     }
-                    
-                    songDbService.IncreasePlayAmount(song);
-                    await StreamAudioFromFile(songPath, _currentSongCts.Token);
-                }
-                catch (OperationCanceledException)
-                {
-                    logger.LogInformation("Skipped song: {Title}", song.Title);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Error during audio streaming of song {Title}", song.Title);
-                }
-                finally
-                {
-                    lock (_lock)
+
+                    var songPath = song.GetFullPath(musicConfiguration.Path);
+                    if (!File.Exists(songPath))
                     {
-                        _currentSongCts?.Dispose();
-                        _currentSongCts = null;
+                        logger.LogError("Song file could not be found at {Path}", songPath);
+                        break;
                     }
-                    CurrentSong = null;
-                }
-                IsPlaying = false;
-            } while (true);
+
+                    try
+                    {
+                        IsPlaying = true;
+                        ResumeInternal();
+
+                        CancellationTokenSource cts;
+                        lock (_lock)
+                        {
+                            _currentSongCts?.Dispose();
+                            // Linked to the lifetime token, so a full teardown cancels
+                            // whatever song is currently streaming too.
+                            _currentSongCts = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCts.Token);
+                            cts = _currentSongCts;
+                        }
+
+                        if (TextChannel != null)
+                        {
+                            _currentMessage = await MessageHelper.EmbedSendMessageAsync(this, TextChannel!, song);
+                        }
+
+                        songDbService.IncreasePlayAmount(song);
+                        await StreamAudioFromFile(songPath, cts.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        logger.LogInformation("Skipped song: {Title}", song.Title);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "Error during audio streaming of song {Title}", song.Title);
+                    }
+                    finally
+                    {
+                        lock (_lock)
+                        {
+                            _currentSongCts?.Dispose();
+                            _currentSongCts = null;
+                        }
+                        CurrentSong = null;
+                    }
+
+                    IsPlaying = false;
+                } while (true);
+            }
+            catch (OperationCanceledException)
+            {
+                logger.LogInformation("Playback loop cancelled for guild {GuildId}", GuildId);
+            }
+            finally
+            {
+                lock (_lock) _playbackLoopRunning = false;
+            }
         });
     }
 
@@ -129,9 +162,18 @@ public class Player(
         Queue.Enqueue(song);
         TextChannel = textChannel;
         VoiceChannel = voiceChannel;
-        if (Queue.Count == 1 && !IsPlaying)
+
+        // Guard against a double-start: IsPlaying only flips to true once the loop
+        // actually dequeues a song, so two Enqueue calls arriving close together
+        // (e.g., queueing several tracks quickly) could both see IsPlaying == false
+        // and both call PlaySong(), producing two competing consumers of the queue.
+        lock (_lock)
         {
-            PlaySong();
+            if (Queue.Count == 1 && !IsPlaying && !_playbackLoopRunning)
+            {
+                _playbackLoopRunning = true;
+                PlaySong();
+            }
         }
     }
 
@@ -139,10 +181,9 @@ public class Player(
     {
         lock (_lock)
             _currentSongCts?.Cancel();
-        
-        if (!IsPlaying)
-            _pauseEvent.Set();
-        
+
+        // No longer need to force-resume here: WaitIfPausedAsync observes the
+        // cancellation token directly, so cancelling works even while paused.
         await DeleteMessageAsync();
     }
 
@@ -155,13 +196,25 @@ public class Player(
     public bool Pause()
     {
         IsPlaying = !IsPlaying;
-        
+
         if (IsPlaying)
-            _pauseEvent.Set();
+            ResumeInternal();
         else
-            _pauseEvent.Reset();
-        
+        {
+            // Interlocked.CompareExchange instead of `_pauseTcs ??= ...`: the latter is a
+            // read-then-conditionally-write, which is not atomic even on a volatile field.
+            // This only actually allocates the new TCS if the field was still null.
+            var candidate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            Interlocked.CompareExchange(ref _pauseTcs, candidate, null);
+        }
+
         return IsPlaying;
+    }
+
+    private void ResumeInternal()
+    {
+        var tcs = Interlocked.Exchange(ref _pauseTcs, null);
+        tcs?.TrySetResult(true);
     }
 
     public void DecreaseVolume()
@@ -187,11 +240,10 @@ public class Player(
 
         if (VoiceChannel != null)
         {
-            logger.LogInformation("Disposing of playing task");
-            _playingTask.Dispose();
-
+            // Don't Dispose() a Task that may still be running - just let it complete
+            // on its own (it will observe the disconnect/cancellation and exit).
             await Task.Delay(2500);
-            
+
             logger.LogInformation("Disconnecting from VoiceChannel");
             try
             {
@@ -203,12 +255,12 @@ public class Player(
             }
 
             await Task.Delay(2500);
-            
+
             logger.LogInformation("Reconnecting to VoiceChannel");
             _audioClient = await VoiceChannel.ConnectAsync();
 
             await Task.Delay(2500);
-            
+
             if (_lastPlayedSong != null)
             {
                 logger.LogInformation("Playing LastPlayedSong again");
@@ -216,7 +268,14 @@ public class Player(
                 Queue.Cut();
             }
 
-            PlaySong();
+            lock (_lock)
+            {
+                if (!_playbackLoopRunning)
+                {
+                    _playbackLoopRunning = true;
+                    PlaySong();
+                }
+            }
         }
     }
 
@@ -226,8 +285,14 @@ public class Player(
         {
             await VoiceChannel.DisconnectAsync();
         }
-        
+
         await DeleteMessageAsync();
+
+        // Note: DisconnectAsync can be called both externally (e.g., a "leave" command)
+        // and internally from inside the playback loop itself (queue ran out). DisposeAsync
+        // doesn't await the loop's task, so calling it from either place is safe.
+        await DisposeAsync();
+
         await onPlaybackEnded.Invoke();
     }
 
@@ -270,46 +335,142 @@ public class Player(
             try { await ffmpeg.WaitForExitAsync(CancellationToken.None); } catch { /* Ignore fail */ }
         }
     }
-    
+
+    private Task WaitIfPausedAsync(CancellationToken cancellationToken)
+    {
+        var tcs = _pauseTcs;
+        // tcs.Task.WaitAsync(token) means Skip()/cancellation works instantly even
+        // while paused, unlike the old ManualResetEvent.WaitOne() which ignored the
+        // token entirely and could only be unblocked by manually calling Set().
+        return tcs?.Task.WaitAsync(cancellationToken) ?? Task.CompletedTask;
+    }
+
     private async Task CopyWithVolume(Stream source, Stream destination, CancellationToken cancellationToken)
     {
-        // PCM s16le = 2 bytes per sample, 2 channels = 4 bytes per frame
-        const int bufferSize = 7680; // 4 8000 Hz * 2 ch * 2 bytes * 20ms
+        // s16le, 48kHz, stereo = 2 bytes/sample * 2 channels * 48000 samples/sec
+        // = 192,000 bytes/sec -> 3840 bytes per 20ms frame (matches Discord's Opus frame size).
+        const int bufferSize = 3840;
         var buffer = new byte[bufferSize];
         var scaled = new byte[bufferSize];
+
+        // Carries a single leftover byte across reads if a chunk arrives with an odd
+        // length, so we never scale/write a stale or half-written sample.
+        var haveCarry = false;
+        byte carryByte = 0;
 
         int bytesRead;
         while ((bytesRead = await source.ReadAsync(buffer, cancellationToken)) > 0)
         {
-            _pauseEvent.WaitOne();
-            
+            await WaitIfPausedAsync(cancellationToken);
+
             var volume = Volume; // snapshot once per chunk to avoid tearing
 
-            // Walk through each 16-bit little-endian sample and scale it
-            for (var i = 0; i < bytesRead - 1; i += 2)
+            var offset = 0;
+            var writeLen = 0;
+
+            if (haveCarry)
+            {
+                var sample = (short)(carryByte | (buffer[0] << 8));
+                var scaled16 = (short)Math.Clamp(sample * volume, short.MinValue, short.MaxValue);
+                scaled[0] = (byte)(scaled16 & 0xFF);
+                scaled[1] = (byte)((scaled16 >> 8) & 0xFF);
+                offset = 1;
+                writeLen = 2;
+                haveCarry = false;
+            }
+
+            var pairEnd = bytesRead - ((bytesRead - offset) % 2 == 0 ? 0 : 1);
+            for (var i = offset; i < pairEnd - 1; i += 2)
             {
                 var sample = (short)(buffer[i] | (buffer[i + 1] << 8));
                 var scaled16 = (short)Math.Clamp(sample * volume, short.MinValue, short.MaxValue);
-                scaled[i]     = (byte)(scaled16 & 0xFF);
+                scaled[i] = (byte)(scaled16 & 0xFF);
                 scaled[i + 1] = (byte)((scaled16 >> 8) & 0xFF);
+                writeLen += 2;
             }
 
-            await destination.WriteAsync(scaled.AsMemory(0, bytesRead), cancellationToken);
+            if (pairEnd < bytesRead)
+            {
+                carryByte = buffer[bytesRead - 1];
+                haveCarry = true;
+            }
+
+            if (writeLen > 0)
+                await destination.WriteAsync(scaled.AsMemory(0, writeLen), cancellationToken);
         }
     }
 
-    private static Process CreateFFmpegStream(string filePath)
+    private Process CreateFFmpegStream(string filePath)
     {
         var processStartInfo = new ProcessStartInfo
         {
             FileName = "ffmpeg",
-            Arguments = $"-hide_banner -i \"{filePath}\" -ac 2 -f s16le -ar 48000 pipe:1",
             UseShellExecute = false,
             RedirectStandardOutput = true,
-            RedirectStandardError = false
+            RedirectStandardError = true // captured below instead of left open/unread
         };
 
-        var process = Process.Start(processStartInfo);
-        return process ?? throw new Exception("FFmpeg process start failed.");
+        // ArgumentList handles per-OS quoting/escaping correctly, so a file path
+        // containing spaces or quote characters can't break the command line.
+        processStartInfo.ArgumentList.Add("-hide_banner");
+        processStartInfo.ArgumentList.Add("-nostdin");
+        processStartInfo.ArgumentList.Add("-loglevel");
+        processStartInfo.ArgumentList.Add("warning");
+        processStartInfo.ArgumentList.Add("-i");
+        processStartInfo.ArgumentList.Add(filePath);
+        processStartInfo.ArgumentList.Add("-ac");
+        processStartInfo.ArgumentList.Add("2");
+        processStartInfo.ArgumentList.Add("-f");
+        processStartInfo.ArgumentList.Add("s16le");
+        processStartInfo.ArgumentList.Add("-ar");
+        processStartInfo.ArgumentList.Add("48000");
+        processStartInfo.ArgumentList.Add("pipe:1");
+
+        var process = Process.Start(processStartInfo)
+            ?? throw new Exception("FFmpeg process start failed.");
+
+        // Drain stderr asynchronously via the event-based reader. If this weren't
+        // read at all while RedirectStandardError = true, the OS pipe buffer could
+        // fill up and block ffmpeg's writes to it, stalling the whole stream.
+        process.ErrorDataReceived += (_, e) =>
+        {
+            if (!string.IsNullOrEmpty(e.Data))
+                logger.LogWarning("ffmpeg[{File}]: {Line}", Path.GetFileName(filePath), e.Data);
+        };
+        process.BeginErrorReadLine();
+
+        return process;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        // Idempotent: DisconnectAsync (which calls this) can run more than once in edge
+        // cases - e.g., a "leave" command racing with the queue naturally running out.
+        if (Interlocked.Exchange(ref _disposed, 1) == 1)
+            return ValueTask.CompletedTask;
+
+        // Cancel() (not CancelAsync) runs synchronously: by the time this line returns,
+        // every reader of this token - the ReadAsync/WriteAsync calls in CopyWithVolume,
+        // and the pause-gate's WaitAsync - already sees IsCancellationRequested == true
+        // and will unwind on it's very next await. Audio stops here, not after cleanup.
+        _lifetimeCts.Cancel();
+
+        // We deliberately do NOT await _playingTask here - the caller wants playback to
+        // stop immediately, not to wait for ffmpeg to actually exit and the stream to be
+        // flushed/killed. That cleanup still happens (it's in the loop's own final
+        // blocks), just in the background. We only need to keep _lifetimeCts alive until
+        // then, since a pending token registration on an already-disposed source would
+        // throw ObjectDisposedException.
+        _ = _playingTask.ContinueWith(t =>
+        {
+            if (t.IsFaulted)
+                logger.LogError(t.Exception, "Error while stopping playback during dispose");
+
+            _lifetimeCts.Dispose();
+        }, TaskContinuationOptions.ExecuteSynchronously);
+        
+        GC.SuppressFinalize(this);
+
+        return ValueTask.CompletedTask;
     }
 }
