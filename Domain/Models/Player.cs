@@ -312,7 +312,7 @@ public class Player(
     private async Task StreamAudioFromFile(string filePath, CancellationToken cancellationToken = default)
     {
         using var ffmpeg = CreateFFmpegStream(filePath);
-        await using var audioStream = _audioClient.CreatePCMStream(AudioApplication.Mixed);
+        await using var audioStream = _audioClient.CreatePCMStream(AudioApplication.Music);
 
         try
         {
