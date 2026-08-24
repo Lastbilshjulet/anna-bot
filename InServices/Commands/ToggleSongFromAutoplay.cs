@@ -33,7 +33,7 @@ public class ToggleSongFromAutoplay(
             
             // Won't update in cached song lists in players
             logger.LogInformation("Toggling autoplay for {SelectedSongTitle}", selectedSong.Title);
-            var updatedSong = songDbService.ToggleAutoplay(selectedSong);
+            var updatedSong = await songDbService.ToggleAutoplayAsync(selectedSong);
         
             await MessageHelper.EmbedFollowupAsync(Context, $"Toggled autoplay for {updatedSong.Title} to {updatedSong.Autoplay}", true);
         }

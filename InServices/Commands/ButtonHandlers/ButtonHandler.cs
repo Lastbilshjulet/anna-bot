@@ -65,7 +65,7 @@ public class ButtonHandler(ISongDbService songDbService, PlayerState playerState
             return;
         }
         
-        songDbService.ToggleAutoplay(player.CurrentSong);
+        await songDbService.ToggleAutoplayAsync(player.CurrentSong);
         await MessageHelper.EmbedButtonFollowupAsync(component, $"Toggled autoplay to {player.CurrentSong.Autoplay} for  {player.CurrentSong.Title}!");
     }
 

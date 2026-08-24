@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using anna_bot.Domain.Models;
 using anna_bot.OutServices.DbContexts;
 using anna_bot.OutServices.UseCases;
@@ -61,21 +62,22 @@ public class SongDbService(
         return mapper.ToDomain(dbSong);
     }
 
-    public Song ToggleAutoplay(Song song)
+    public async Task<Song> ToggleAutoplayAsync(Song song)
     {
-        using var context = dbContextFactory.CreateDbContext();
+        await using var context = await dbContextFactory.CreateDbContextAsync();
         var dbSong = context.Songs.FirstOrDefault(x => x.YoutubeId == song.YoutubeId);
         if (dbSong == null)
         {
-            logger.LogCritical("Song to update was not found {SongTitle} ({YoutubeId})", song.Title, song.YoutubeId);
+            logger.LogCritical("Song to update was not found {SongTitle} ({YoutubeId})", song.Title,
+                song.YoutubeId);
             throw new Exception($"Song not found, should never happen");
         }
-        
+
         dbSong.Autoplay = !dbSong.Autoplay;
         dbSong.UpdatedAt = DateTime.Now;
 
-        context.SaveChanges();
-        
+        await context.SaveChangesAsync();
+
         return mapper.ToDomain(dbSong);
     }
 
