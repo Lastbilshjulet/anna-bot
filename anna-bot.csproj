@@ -7,6 +7,7 @@
         <LangVersion>latestmajor</LangVersion>
         <ImplicitUsings>disable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <ServerGarbageCollection>true</ServerGarbageCollection>
     </PropertyGroup>
 
     <ItemGroup>

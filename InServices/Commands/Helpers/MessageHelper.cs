@@ -153,6 +153,19 @@ public class MessageHelper
         var disconnectButtonBuilder = new ButtonBuilder("Disconnect", "DisconnectButton")
             .WithEmote(new Emoji("🔌"))
             .WithStyle(ButtonStyle.Danger);
+        ButtonBuilder toggleAutoplayButtonBuilder;
+        if (player.CurrentSong is { Autoplay: true })
+        {
+            toggleAutoplayButtonBuilder = new ButtonBuilder("Off", "ToggleAutoplayButton")
+                .WithEmote(new Emoji("🤮"))
+                .WithStyle(ButtonStyle.Primary);
+        }
+        else
+        {
+            toggleAutoplayButtonBuilder = new ButtonBuilder("On", "ToggleAutoplayButton")
+                .WithEmote(new Emoji("🤌"))
+                .WithStyle(ButtonStyle.Primary);
+        }
         
         var title = song.IsAutoPlayed ? "Auto-Playing..." : "Now Playing...";
         var components = new ComponentBuilderV2()
@@ -165,7 +178,7 @@ public class MessageHelper
                     .WithIsDivider(true)
                     .WithSpacing(SeparatorSpacingSize.Small))
                 .WithActionRow([backButtonBuilder, pauseButtonBuilder, repeatButtonBuilder, skipButtonBuilder])
-                .WithActionRow([volumeDownButtonBuilder, volumeUpButtonBuilder, disconnectButtonBuilder]));
+                .WithActionRow([volumeDownButtonBuilder, volumeUpButtonBuilder, disconnectButtonBuilder, toggleAutoplayButtonBuilder]));
         return components;
     }
 

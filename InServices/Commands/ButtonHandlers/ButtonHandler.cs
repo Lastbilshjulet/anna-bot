@@ -3,12 +3,13 @@ using System.Threading.Tasks;
 using anna_bot.Domain;
 using anna_bot.Domain.Models;
 using anna_bot.InServices.Commands.Helpers;
+using anna_bot.OutServices.UseCases;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 
 namespace anna_bot.InServices.Commands.ButtonHandlers;
 
-public class ButtonHandler(PlayerState playerState, ILogger<ButtonHandler> logger)
+public class ButtonHandler(ISongDbService songDbService, PlayerState playerState, ILogger<ButtonHandler> logger)
 {
     public async Task OnButtonExecuted(SocketMessageComponent component)
     {
@@ -45,12 +46,27 @@ public class ButtonHandler(PlayerState playerState, ILogger<ButtonHandler> logge
                 case "DisconnectButton":
                     await DisconnectButtonHandler(component, player);
                     break;
+                case "ToggleAutoplayButton":
+                    await ToggleAutoPlayButtonHandler(component, player);
+                    break;
             }
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Unexpected error occurred during button handling.");
         }
+    }
+
+    private async Task ToggleAutoPlayButtonHandler(SocketMessageComponent component, Player player)
+    {
+        if (player.CurrentSong == null)
+        {
+            await MessageHelper.EmbedButtonFollowupAsync(component, "Song is null, can't toggle auto play");
+            return;
+        }
+        
+        songDbService.ToggleAutoplay(player.CurrentSong);
+        await MessageHelper.EmbedButtonFollowupAsync(component, $"Toggled autoplay to {player.CurrentSong.Autoplay} for  {player.CurrentSong.Title}!");
     }
 
     private static async Task BackButtonHandler(SocketMessageComponent component, Player player)
