@@ -3,7 +3,6 @@ using System.Net.WebSockets;
 using System.Threading.Tasks;
 using anna_bot.Domain;
 using anna_bot.Domain.Models.Configurations;
-using anna_bot.InServices.Commands.ButtonHandlers;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
@@ -17,7 +16,6 @@ public class DiscordBot(
     IOptions<DiscordConfiguration> discordConfig,
     DiscordSocketClient client,
     InteractionService interactionService,
-    ButtonHandler buttonHandler,
     PlayerState playerState,
     ILogger<DiscordBot> logger)
 {
@@ -28,7 +26,6 @@ public class DiscordBot(
         client.Ready += OnReady;
         client.InteractionCreated += HandleInteraction;
         client.MessageDeleted += OnMessageDeleted;
-        client.ButtonExecuted += buttonHandler.OnButtonExecuted;
         client.Log += Log;
         interactionService.Log += Log;
 

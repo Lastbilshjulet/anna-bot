@@ -345,12 +345,6 @@ public class Player(
         return tcs?.Task.WaitAsync(cancellationToken) ?? Task.CompletedTask;
     }
 
-    // If a single read or write takes longer than this, it's eating into the 20ms
-    // real-time budget for this chunk and will be audible as a stutter. Logged so you
-    // can tell, next time it lags, whether the stall is on the read side (disk/ffmpeg)
-    // or the writing side (Discord/network).
-    private const int SlowChunkThresholdMs = 30;
-
     private async Task CopyWithVolume(Stream source, Stream destination, CancellationToken cancellationToken)
     {
         // s16le, 48kHz, stereo = 2 bytes/sample * 2 channels * 48000 samples/sec
@@ -364,16 +358,9 @@ public class Player(
         var haveCarry = false;
         byte carryByte = 0;
 
-        var sw = new Stopwatch();
-
         while (true)
         {
-            sw.Restart();
             var bytesRead = await source.ReadAsync(buffer, cancellationToken);
-            sw.Stop();
-            if (sw.ElapsedMilliseconds > SlowChunkThresholdMs)
-                logger.LogWarning("Slow ffmpeg/disk read: {Ms}ms for {Bytes} bytes (song {Title})",
-                    sw.ElapsedMilliseconds, bytesRead, CurrentSong?.Title);
 
             if (bytesRead <= 0)
                 break;
@@ -415,12 +402,7 @@ public class Player(
             if (writeLen <= 0) 
                 continue;
             
-            sw.Restart();
             await destination.WriteAsync(scaled.AsMemory(0, writeLen), cancellationToken);
-            sw.Stop();
-            if (sw.ElapsedMilliseconds > SlowChunkThresholdMs)
-                logger.LogWarning("Slow write to Discord PCM stream: {Ms}ms for {Bytes} bytes (song {Title})",
-                    sw.ElapsedMilliseconds, writeLen, CurrentSong?.Title);
         }
     }
 

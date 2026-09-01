@@ -7,6 +7,7 @@ using Discord;
 using Discord.Interactions;
 using Discord.Rest;
 using Discord.WebSocket;
+using Microsoft.Extensions.Logging;
 
 namespace anna_bot.InServices.Commands.Helpers;
 
@@ -105,8 +106,14 @@ public class MessageHelper
         return messageSent;
     }
 
-    public static async Task EmbedSendMessageAsync(SocketMessageComponent component, Player player)
+    public static async Task EmbedSendMessageAsync(SocketInteractionContext context, Player player, ILogger logger)
     {
+        if (context.Interaction is not SocketMessageComponent component)
+        {
+            logger.LogError("Unable to update song components because the interaction was not a message component");
+            return;
+        }
+
         var currentSong = player.CurrentSong!;
         var components = SongComponentBuilder(player, player.TextChannel!, currentSong);
 
@@ -122,47 +129,47 @@ public class MessageHelper
         SocketTextChannel textChannel, 
         Song song)
     {
-        var backButtonBuilder = new ButtonBuilder("Back", "BackButton")
+        var backButtonBuilder = new ButtonBuilder("Back", "BackSongInteraction")
             .WithEmote(new Emoji("⏮️"))
             .WithStyle(ButtonStyle.Danger);
         ButtonBuilder pauseButtonBuilder;
         if (player.IsPlaying)
         {
-            pauseButtonBuilder = new ButtonBuilder("Pause", "PauseButton")
+            pauseButtonBuilder = new ButtonBuilder("Pause", "PauseSongInteraction")
                 .WithEmote(new Emoji("⏸️"))
                 .WithStyle(ButtonStyle.Success);
         }
         else
         {
-            pauseButtonBuilder = new ButtonBuilder("Play", "PlayButton")
+            pauseButtonBuilder = new ButtonBuilder("Play", "PlaySongInteraction")
                 .WithEmote(new Emoji("▶️"))
                 .WithStyle(ButtonStyle.Success);
         }
-        var skipButtonBuilder = new ButtonBuilder("Skip", "SkipButton")
+        var skipButtonBuilder = new ButtonBuilder("Skip", "SkipSongInteraction")
             .WithEmote(new Emoji("⏭️"))
             .WithStyle(ButtonStyle.Danger);
-        var repeatButtonBuilder = new ButtonBuilder("Repeat", "RepeatButton")
+        var repeatButtonBuilder = new ButtonBuilder("Repeat", "RepeatSongInteraction")
             .WithEmote(new Emoji("🔂"))
             .WithStyle(ButtonStyle.Success);
-        var volumeDownButtonBuilder = new ButtonBuilder("Down", "VolumeDownButton")
+        var volumeDownButtonBuilder = new ButtonBuilder("Down", "DecreaseVolumeInteraction")
             .WithEmote(new Emoji("🔉"))
             .WithStyle(ButtonStyle.Secondary);
-        var volumeUpButtonBuilder = new ButtonBuilder("Up", "VolumeUpButton")
+        var volumeUpButtonBuilder = new ButtonBuilder("Up", "IncreaseVolumeInteraction")
             .WithEmote(new Emoji("🔊"))
             .WithStyle(ButtonStyle.Primary);
-        var disconnectButtonBuilder = new ButtonBuilder("Disconnect", "DisconnectButton")
+        var disconnectButtonBuilder = new ButtonBuilder("Disconnect", "DisconnectPlayerInteraction")
             .WithEmote(new Emoji("🔌"))
             .WithStyle(ButtonStyle.Danger);
         ButtonBuilder toggleAutoplayButtonBuilder;
         if (player.CurrentSong is { Autoplay: true })
         {
-            toggleAutoplayButtonBuilder = new ButtonBuilder("Off", "ToggleAutoplayButton")
+            toggleAutoplayButtonBuilder = new ButtonBuilder("Off", "ToggleAutoplayInteraction")
                 .WithEmote(new Emoji("🤮"))
                 .WithStyle(ButtonStyle.Primary);
         }
         else
         {
-            toggleAutoplayButtonBuilder = new ButtonBuilder("On", "ToggleAutoplayButton")
+            toggleAutoplayButtonBuilder = new ButtonBuilder("On", "ToggleAutoplayInteraction")
                 .WithEmote(new Emoji("🤌"))
                 .WithStyle(ButtonStyle.Primary);
         }
