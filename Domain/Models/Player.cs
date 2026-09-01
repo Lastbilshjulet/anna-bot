@@ -1,12 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using anna_bot.Domain.Models.Configurations;
 using anna_bot.InServices.Commands.Helpers;
 using anna_bot.OutServices.UseCases;
+using Discord;
 using Discord.Audio;
 using Discord.Rest;
 using Discord.WebSocket;
@@ -23,6 +25,8 @@ public class Player(
     Func<Task> onPlaybackEnded,
     ILogger<Player> logger) : IAsyncDisposable
 {
+    private const int BytesPerSecond = 192000; // s16le, 48kHz, stereo: 2 bytes * 2 channels * 48000 samples/sec
+
     private readonly Lock _lock = new();
 
     // Lifetime token: cancels everything (including the "waiting for listeners" delay)
@@ -42,9 +46,26 @@ public class Player(
     private bool _playbackLoopRunning;
     private int _disposed; // 0 = false, 1 = true; guarded with Interlocked, see DisposeAsync
 
+    // Rough playback position of the current/most recent song, in seconds, used to
+    // resume at (roughly) the same spot after a reconnect instead of from the start.
+    private double _lastPlaybackPositionSeconds;
+
+    // Set by Reconnect() right before it re-queues _lastPlayedSong; consumed once by
+    // the playback loop the next time it starts streaming, then cleared.
+    private double? _pendingResumeOffsetSeconds;
+    
+    private volatile bool _stopLoopRequested;
+
     public readonly SongQueue Queue = new(availableSongs);
     public ulong GuildId { get; } = guildId;
+
+    // True only while a song is actively streaming (not paused, not idle).
     public bool IsPlaying { get; private set; }
+
+    // True while playback is paused. Separate from IsPlaying so pausing doesn't fool
+    // Enqueue()'s "should I auto-start the loop" check.
+    public bool IsPaused { get; private set; }
+
     public Song? CurrentSong { get; private set; }
     public float Volume { get; set; } = musicConfiguration.BaseVolume;
     public bool Repeat { get; private set; }
@@ -68,6 +89,8 @@ public class Player(
                 do
                 {
                     Volume = musicConfiguration.BaseVolume;
+                    IsPaused = false;
+
                     if (VoiceChannel.ConnectedUsers.Count <= 1)
                     {
                         // Honor the lifetime token so this doesn't keep the loop alive
@@ -78,7 +101,11 @@ public class Player(
 
                     var song = Dequeue();
                     CurrentSong = song;
-                    _lastPlayedSong = song;
+
+                    // Only overwrite _lastPlayedSong when we actually have a song - otherwise
+                    // a queue running dry wipes out the very thing Reconnect() needs to replay.
+                    if (song != null)
+                        _lastPlayedSong = song;
 
                     if (song == null)
                     {
@@ -94,6 +121,12 @@ public class Player(
                         logger.LogError("Song file could not be found at {Path}", songPath);
                         break;
                     }
+
+                    // Consumed at most once: only set (by Reconnect()) when this song is being
+                    // resumed after a connection loss, otherwise it's null and we start at 0.
+                    var resumeOffsetSeconds = _pendingResumeOffsetSeconds ?? 0;
+                    _pendingResumeOffsetSeconds = null;
+                    _lastPlaybackPositionSeconds = resumeOffsetSeconds;
 
                     try
                     {
@@ -116,7 +149,7 @@ public class Player(
                         }
 
                         songDbService.IncreasePlayAmount(song);
-                        await StreamAudioFromFile(songPath, cts.Token);
+                        await StreamAudioFromFile(songPath, resumeOffsetSeconds, cts.Token);
                     }
                     catch (OperationCanceledException)
                     {
@@ -125,6 +158,21 @@ public class Player(
                     catch (Exception ex)
                     {
                         logger.LogError(ex, "Error during audio streaming of song {Title}", song.Title);
+
+                        // A single bad file shouldn't kill the loop, but a dead voice connection
+                        // will fail on every subsequent song too - if we don't stop here, the loop
+                        // burns through the entire queue in milliseconds, hits an empty queue, and
+                        // tears the whole player down via DisconnectAsync()/DisposeAsync() before
+                        // Reconnect() ever gets a chance to run. Stopping (without disposing) keeps
+                        // the queue and _lastPlayedSong intact so Reconnect() can revive this same
+                        // loop instead of finding a permanently-dead player.
+                        if (_audioClient.ConnectionState != ConnectionState.Connected)
+                        {
+                            logger.LogWarning(
+                                "Voice connection for guild {GuildId} appears lost; stopping playback loop until Reconnect() runs.",
+                                GuildId);
+                            break;
+                        }
                     }
                     finally
                     {
@@ -134,10 +182,13 @@ public class Player(
                             _currentSongCts = null;
                         }
                         CurrentSong = null;
-                    }
 
-                    IsPlaying = false;
-                } while (true);
+                        // Moved here (was previously a standalone line after the try/catch/finally)
+                        // so it's reset on every exit path, including `break` - a bare statement
+                        // after the finally block is skipped when a break inside the catch fires.
+                        IsPlaying = false;
+                    }
+                } while (!_stopLoopRequested);
             }
             catch (OperationCanceledException)
             {
@@ -195,9 +246,9 @@ public class Player(
 
     public bool Pause()
     {
-        IsPlaying = !IsPlaying;
+        IsPaused = !IsPaused;
 
-        if (IsPlaying)
+        if (!IsPaused)
             ResumeInternal();
         else
         {
@@ -208,7 +259,7 @@ public class Player(
             Interlocked.CompareExchange(ref _pauseTcs, candidate, null);
         }
 
-        return IsPlaying;
+        return IsPaused;
     }
 
     private void ResumeInternal()
@@ -235,46 +286,79 @@ public class Player(
 
     public async Task Reconnect()
     {
+        // If the player was already fully torn down (e.g. someone ran "leave"), there's
+        // nothing to revive - _lifetimeCts is cancelled/disposed and can never be reused.
+        if (Volatile.Read(ref _disposed) == 1)
+        {
+            logger.LogWarning("Reconnect() called on an already-disposed player for guild {GuildId}; ignoring.", GuildId);
+            return;
+        }
+
         logger.LogInformation("Trying to reconnect");
+
+        // The old connection may be silently dead (e.g. a voice-server migration) rather
+        // than throwing, so the loop could be stuck forever inside WriteAsync/ReadAsync
+        // without ever reaching its own exception handling. Force it to unblock now,
+        // and mark this as a hard stop (not a Skip) so the loop exits instead of moving
+        // on to the next song on the stale connection.
+        _stopLoopRequested = true;
+        lock (_lock)
+            _currentSongCts?.Cancel();
         await DeleteMessageAsync();
 
-        if (VoiceChannel != null)
+        if (VoiceChannel == null)
+            return;
+
+        logger.LogInformation("Reconnecting to VoiceChannel");
+        try
         {
-            // Don't Dispose() a Task that may still be running - just let it complete
-            // on its own (it will observe the disconnect/cancellation and exit).
-            await Task.Delay(2500);
-
-            logger.LogInformation("Disconnecting from VoiceChannel");
-            try
-            {
-                await VoiceChannel.DisconnectAsync();
-            }
-            catch
-            {
-                // ignored
-            }
-
-            await Task.Delay(2500);
-
-            logger.LogInformation("Reconnecting to VoiceChannel");
             _audioClient = await VoiceChannel.ConnectAsync();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to reconnect to voice channel for guild {GuildId}", GuildId);
+            return;
+        }
 
-            await Task.Delay(2500);
+        // Give Discord's voice gateway a moment to be ready to accept audio.
+        await Task.Delay(1000);
 
-            if (_lastPlayedSong != null)
+        if (_lastPlayedSong != null)
+        {
+            logger.LogInformation(
+                "Resuming {Title} at {Position:F1}s",
+                _lastPlayedSong.Title, _lastPlaybackPositionSeconds);
+
+            _pendingResumeOffsetSeconds = _lastPlaybackPositionSeconds;
+            Queue.Enqueue(_lastPlayedSong);
+            Queue.Cut();
+        }
+
+        // The old loop's task may still be unwinding (it observes the connection loss and
+        // breaks out on its own) - wait for it so we don't race PlaySong() against a loop
+        // that hasn't flipped _playbackLoopRunning back to false yet.
+        Task previousLoop;
+        lock (_lock) previousLoop = _playingTask;
+
+        try
+        {
+            await previousLoop.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        catch (TimeoutException)
+        {
+            logger.LogWarning("Timed out waiting for the previous playback loop to stop for guild {GuildId}", GuildId);
+        }
+        catch
+        {
+            // Any other exception from the old loop was already logged when it happened.
+        }
+
+        lock (_lock)
+        {
+            if (!_playbackLoopRunning)
             {
-                logger.LogInformation("Playing LastPlayedSong again");
-                Queue.Enqueue(_lastPlayedSong);
-                Queue.Cut();
-            }
-
-            lock (_lock)
-            {
-                if (!_playbackLoopRunning)
-                {
-                    _playbackLoopRunning = true;
-                    PlaySong();
-                }
+                _playbackLoopRunning = true;
+                PlaySong();
             }
         }
     }
@@ -309,14 +393,14 @@ public class Player(
         }
     }
 
-    private async Task StreamAudioFromFile(string filePath, CancellationToken cancellationToken = default)
+    private async Task StreamAudioFromFile(string filePath, double startOffsetSeconds = 0, CancellationToken cancellationToken = default)
     {
-        using var ffmpeg = CreateFFmpegStream(filePath);
+        using var ffmpeg = CreateFFmpegStream(filePath, startOffsetSeconds);
         await using var audioStream = _audioClient.CreatePCMStream(AudioApplication.Music);
 
         try
         {
-            await CopyWithVolume(ffmpeg.StandardOutput.BaseStream, audioStream, cancellationToken);
+            await CopyWithVolume(ffmpeg.StandardOutput.BaseStream, audioStream, cancellationToken, startOffsetSeconds);
         }
         catch (OperationCanceledException ex)
         {
@@ -330,9 +414,10 @@ public class Player(
         }
         finally
         {
-            try { await audioStream.FlushAsync(CancellationToken.None); } catch { /* Ignore fail */ }
+            using var cleanupCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            try { await audioStream.FlushAsync(cleanupCts.Token); } catch { /* Ignore fail */ }
             try { if (!ffmpeg.HasExited) ffmpeg.Kill(); } catch { /* Ignore fail */ }
-            try { await ffmpeg.WaitForExitAsync(CancellationToken.None); } catch { /* Ignore fail */ }
+            try { await ffmpeg.WaitForExitAsync(cleanupCts.Token); } catch { /* Ignore fail */ }
         }
     }
 
@@ -345,7 +430,7 @@ public class Player(
         return tcs?.Task.WaitAsync(cancellationToken) ?? Task.CompletedTask;
     }
 
-    private async Task CopyWithVolume(Stream source, Stream destination, CancellationToken cancellationToken)
+    private async Task CopyWithVolume(Stream source, Stream destination, CancellationToken cancellationToken, double baseOffsetSeconds)
     {
         // s16le, 48kHz, stereo = 2 bytes/sample * 2 channels * 48000 samples/sec
         // = 192,000 bytes/sec -> 3840 bytes per 20ms frame (matches Discord's Opus frame size).
@@ -358,6 +443,8 @@ public class Player(
         var haveCarry = false;
         byte carryByte = 0;
 
+        long totalBytesRead = 0;
+
         while (true)
         {
             var bytesRead = await source.ReadAsync(buffer, cancellationToken);
@@ -365,12 +452,21 @@ public class Player(
             if (bytesRead <= 0)
                 break;
 
+            totalBytesRead += bytesRead;
+            _lastPlaybackPositionSeconds = baseOffsetSeconds + (double)totalBytesRead / BytesPerSecond;
+
             await WaitIfPausedAsync(cancellationToken);
 
             var volume = Volume; // snapshot once per chunk to avoid tearing
 
             var offset = 0;
-            var writeLen = 0;
+            // Output write cursor. Previously this reused the input index `i` once `offset`
+            // was shifted by a carry byte, which meant the carry sample's second byte got
+            // immediately clobbered by the first loop iteration, and every sample after it
+            // was written one byte too early - corrupting audio (and reporting a writeLen
+            // that included a byte that was never actually written). Tracking output
+            // position separately from input position fixes both.
+            var writeIdx = 0;
 
             if (haveCarry)
             {
@@ -379,7 +475,7 @@ public class Player(
                 scaled[0] = (byte)(scaled16 & 0xFF);
                 scaled[1] = (byte)((scaled16 >> 8) & 0xFF);
                 offset = 1;
-                writeLen = 2;
+                writeIdx = 2;
                 haveCarry = false;
             }
 
@@ -388,9 +484,9 @@ public class Player(
             {
                 var sample = (short)(buffer[i] | (buffer[i + 1] << 8));
                 var scaled16 = (short)Math.Clamp(sample * volume, short.MinValue, short.MaxValue);
-                scaled[i] = (byte)(scaled16 & 0xFF);
-                scaled[i + 1] = (byte)((scaled16 >> 8) & 0xFF);
-                writeLen += 2;
+                scaled[writeIdx] = (byte)(scaled16 & 0xFF);
+                scaled[writeIdx + 1] = (byte)((scaled16 >> 8) & 0xFF);
+                writeIdx += 2;
             }
 
             if (pairEnd < bytesRead)
@@ -399,14 +495,14 @@ public class Player(
                 haveCarry = true;
             }
 
-            if (writeLen <= 0) 
+            if (writeIdx <= 0)
                 continue;
-            
-            await destination.WriteAsync(scaled.AsMemory(0, writeLen), cancellationToken);
+
+            await destination.WriteAsync(scaled.AsMemory(0, writeIdx), cancellationToken);
         }
     }
 
-    private Process CreateFFmpegStream(string filePath)
+    private Process CreateFFmpegStream(string filePath, double startOffsetSeconds = 0)
     {
         var processStartInfo = new ProcessStartInfo
         {
@@ -422,6 +518,15 @@ public class Player(
         processStartInfo.ArgumentList.Add("-nostdin");
         processStartInfo.ArgumentList.Add("-loglevel");
         processStartInfo.ArgumentList.Add("warning");
+
+        // -ss before -i does input seeking (fast, keyframe-based for most formats) so a
+        // Reconnect() resume doesn't have to decode from the start of the file.
+        if (startOffsetSeconds > 0.01)
+        {
+            processStartInfo.ArgumentList.Add("-ss");
+            processStartInfo.ArgumentList.Add(startOffsetSeconds.ToString("0.00", CultureInfo.InvariantCulture));
+        }
+
         processStartInfo.ArgumentList.Add("-i");
         processStartInfo.ArgumentList.Add(filePath);
         processStartInfo.ArgumentList.Add("-ac");
@@ -474,7 +579,7 @@ public class Player(
 
             _lifetimeCts.Dispose();
         }, TaskContinuationOptions.ExecuteSynchronously);
-        
+
         GC.SuppressFinalize(this);
 
         return ValueTask.CompletedTask;
