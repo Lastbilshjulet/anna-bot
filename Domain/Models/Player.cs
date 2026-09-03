@@ -47,7 +47,7 @@ public class Player(
     private int _disposed; // 0 = false, 1 = true; guarded with Interlocked, see DisposeAsync
 
     // Rough playback position of the current/most recent song, in seconds, used to
-    // resume at (roughly) the same spot after a reconnect instead of from the start.
+    // resume at (roughly) the same spot after a reconnection instead of from the start.
     private double _lastPlaybackPositionSeconds;
 
     // Set by Reconnect() right before it re-queues _lastPlayedSong; consumed once by
@@ -60,12 +60,12 @@ public class Player(
     public readonly SongQueue Queue = new(availableSongs);
     public ulong GuildId { get; } = guildId;
 
-    // True only while a song is actively streaming (not paused, not idle).
+    // True, only while a song is actively streaming (not paused, not idle).
     public bool IsPlaying { get; private set; }
 
     // True while playback is paused. Separate from IsPlaying so pausing doesn't fool
     // Enqueue()'s "should I auto-start the loop" check.
-    public bool IsPaused { get; private set; }
+    private bool IsPaused { get; set; }
 
     public Song? CurrentSong { get; private set; }
     public float Volume { get; set; } = musicConfiguration.BaseVolume;
@@ -124,7 +124,7 @@ public class Player(
                     }
 
                     // Consumed at most once: only set (by Reconnect()) when this song is being
-                    // resumed after a connection loss, otherwise it's null and we start at 0.
+                    // resumed after a connection loss, otherwise it's null, and we start at 0.
                     var resumeOffsetSeconds = _pendingResumeOffsetSeconds ?? 0;
                     _pendingResumeOffsetSeconds = null;
                     _lastPlaybackPositionSeconds = resumeOffsetSeconds;
@@ -133,10 +133,12 @@ public class Player(
                     {
                         IsPlaying = true;
                         ResumeInternal();
+                        logger.LogInformation("Resuming playback");
 
                         CancellationTokenSource cts;
                         lock (_lock)
                         {
+                            logger.LogInformation("Creating new cancellation token");
                             _currentSongCts?.Dispose();
                             // Linked to the lifetime token, so a full teardown cancels
                             // whatever song is currently streaming too.
@@ -146,9 +148,11 @@ public class Player(
 
                         if (TextChannel != null)
                         {
+                            logger.LogInformation("Sending message for {Title}", song.Title);
                             _currentMessage = await MessageHelper.EmbedSendMessageAsync(this, TextChannel!, song);
                         }
 
+                        logger.LogInformation("Playing {Title} in guild {GuildId}", song.Title, GuildId);
                         songDbService.IncreasePlayAmount(song);
                         await StreamAudioFromFile(songPath, resumeOffsetSeconds, cts.Token);
                     }
@@ -160,7 +164,7 @@ public class Player(
                     {
                         logger.LogError(ex, "Error during audio streaming of song {Title}", song.Title);
 
-                        // A single bad file shouldn't kill the loop, but a dead voice connection
+                        // A single bad file shouldn't kill the loop. However, a dead voice connection
                         // will fail on every subsequent song too - if we don't stop here, the loop
                         // burns through the entire queue in milliseconds, hits an empty queue, and
                         // tears the whole player down via DisconnectAsync()/DisposeAsync() before
@@ -169,9 +173,7 @@ public class Player(
                         // loop instead of finding a permanently-dead player.
                         if (_audioClient.ConnectionState != ConnectionState.Connected)
                         {
-                            logger.LogWarning(
-                                "Voice connection for guild {GuildId} appears lost; stopping playback loop until Reconnect() runs.",
-                                GuildId);
+                            logger.LogWarning("Voice connection for guild {GuildId} appears lost; stopping playback loop until Reconnect() runs.", GuildId);
                             break;
                         }
                     }
@@ -206,6 +208,7 @@ public class Player(
     {
         if (Repeat)
             Queue.QueueSameSongFirst();
+        
         return Queue.Dequeue();
     }
 
@@ -214,6 +217,8 @@ public class Player(
         Queue.Enqueue(song);
         TextChannel = textChannel;
         VoiceChannel = voiceChannel;
+        
+        logger.LogInformation("{Title} was enqueued in guild {GuildId}", song.Title, GuildId);
 
         // Guard against a double-start: IsPlaying only flips to true once the loop
         // actually dequeues a song, so two Enqueue calls arriving close together
@@ -221,11 +226,11 @@ public class Player(
         // and both call PlaySong(), producing two competing consumers of the queue.
         lock (_lock)
         {
-            if (Queue.Count == 1 && !IsPlaying && !_playbackLoopRunning)
-            {
-                _playbackLoopRunning = true;
-                PlaySong();
-            }
+            if (Queue.Count != 1 || IsPlaying || _playbackLoopRunning)
+                return;
+            
+            _playbackLoopRunning = true;
+            PlaySong();
         }
     }
 
@@ -248,6 +253,8 @@ public class Player(
     public bool Pause()
     {
         IsPaused = !IsPaused;
+        
+        logger.LogInformation("Setting pause of player ({GuildId}) to {IsPaused}", GuildId, IsPaused);
 
         if (!IsPaused)
             ResumeInternal();
@@ -287,8 +294,8 @@ public class Player(
 
     public async Task Reconnect()
     {
-        // If the player was already fully torn down (e.g. someone ran "leave"), there's
-        // nothing to revive - _lifetimeCts is cancelled/disposed and can never be reused.
+        // If the player was already fully torn down (e.g., someone ran "leave"), there's
+        // nothing to revive - _lifetimeCts is canceled/disposed and can never be reused.
         if (Volatile.Read(ref _disposed) == 1)
         {
             logger.LogWarning("Reconnect() called on an already-disposed player for guild {GuildId}; ignoring.", GuildId);
@@ -303,18 +310,23 @@ public class Player(
 
         logger.LogInformation("Trying to reconnect");
 
-        // The old connection may be silently dead (e.g. a voice-server migration) rather
+        // The old connection may be silently dead (e.g., a voice-server migration) rather
         // than throwing, so the loop could be stuck forever inside WriteAsync/ReadAsync
         // without ever reaching its own exception handling. Force it to unblock now,
         // and mark this as a hard stop (not a Skip) so the loop exits instead of moving
         // on to the next song on the stale connection.
         _stopLoopRequested = true;
+        logger.LogInformation("Cancelling current song");
         lock (_lock)
             _currentSongCts?.Cancel();
+        logger.LogInformation("Deleting message old song message");
         await DeleteMessageAsync();
 
         if (VoiceChannel == null)
+        {
+            logger.LogInformation("VoiceChannel is null; nothing to reconnect to");
             return;
+        }
 
         logger.LogInformation("Reconnecting to VoiceChannel");
 
@@ -324,6 +336,7 @@ public class Player(
         {
             try
             {
+                logger.LogInformation("Attempting voice reconnect attempt {Attempt}/{Max}", attempt, maxAttempts);
                 newClient = await VoiceChannel.ConnectAsync();
                 break;
             }
@@ -346,9 +359,7 @@ public class Player(
 
         if (_lastPlayedSong != null)
         {
-            logger.LogInformation(
-                "Resuming {Title} at {Position:F1}s",
-                _lastPlayedSong.Title, _lastPlaybackPositionSeconds);
+            logger.LogInformation("Resuming {Title} at {Position:F1}s", _lastPlayedSong.Title, _lastPlaybackPositionSeconds);
 
             _pendingResumeOffsetSeconds = _lastPlaybackPositionSeconds;
             Queue.Enqueue(_lastPlayedSong);
@@ -363,14 +374,16 @@ public class Player(
 
         try
         {
+            logger.LogInformation("Waiting for the previous playback loop to stop for guild {GuildId}...", GuildId);
             await previousLoop.WaitAsync(TimeSpan.FromSeconds(5));
         }
         catch (TimeoutException)
         {
             logger.LogWarning("Timed out waiting for the previous playback loop to stop for guild {GuildId}", GuildId);
         }
-        catch
+        catch (Exception ex)
         {
+            logger.LogWarning(ex, "Should already have logged this, but doing it anyway");
             // Any other exception from the old loop was already logged when it happened.
         }
 
@@ -379,16 +392,27 @@ public class Player(
             if (!_playbackLoopRunning)
             {
                 _playbackLoopRunning = true;
+                logger.LogInformation("Playing song again after reconnect");
                 PlaySong();
+            }
+            else
+            {
+                logger.LogInformation("playbackLoop is still running");
             }
         }
     }
 
     public async Task DisconnectAsync()
     {
+        logger.LogInformation("Disconnecting from voice channel");
         if (VoiceChannel != null)
         {
             await VoiceChannel.DisconnectAsync();
+            logger.LogInformation("Disconnected from voice channel");
+        }
+        else
+        {
+            logger.LogWarning("VoiceChannel is null; nothing to disconnect");
         }
 
         await DeleteMessageAsync();
@@ -398,15 +422,19 @@ public class Player(
         // doesn't await the loop's task, so calling it from either place is safe.
         await DisposeAsync();
 
+        logger.LogInformation("Invoking to remove player ({GuildId}) from playerState", GuildId);
         await onPlaybackEnded.Invoke();
     }
 
     private async Task DeleteMessageAsync()
     {
+        logger.LogInformation("Deleting message");
         try
         {
             if (_currentMessage != null)
                 await _currentMessage.DeleteAsync();
+            else
+                logger.LogWarning("No message to delete");
         }
         catch (Exception ex)
         {
@@ -419,6 +447,8 @@ public class Player(
         using var ffmpeg = CreateFFmpegStream(filePath, startOffsetSeconds);
         await using var audioStream = _audioClient.CreatePCMStream(AudioApplication.Music);
 
+        logger.LogInformation("Starting audio stream");
+        
         try
         {
             await CopyWithVolume(ffmpeg.StandardOutput.BaseStream, audioStream, cancellationToken, startOffsetSeconds);
@@ -435,10 +465,34 @@ public class Player(
         }
         finally
         {
+            logger.LogInformation("Stream over, cleaning up audio stream");
             using var cleanupCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            try { await audioStream.FlushAsync(cleanupCts.Token); } catch { /* Ignore fail */ }
-            try { if (!ffmpeg.HasExited) ffmpeg.Kill(); } catch { /* Ignore fail */ }
-            try { await ffmpeg.WaitForExitAsync(cleanupCts.Token); } catch { /* Ignore fail */ }
+            try
+            {
+                await audioStream.FlushAsync(cleanupCts.Token);
+            }
+            catch
+            {
+                logger.LogWarning("Failed to flush audio stream");
+            }
+
+            try
+            {
+                if (!ffmpeg.HasExited) ffmpeg.Kill();
+            }
+            catch
+            {
+                logger.LogWarning("Failed to kill ffmpeg process");
+            }
+
+            try
+            {
+                await ffmpeg.WaitForExitAsync(cleanupCts.Token);
+            }
+            catch
+            {
+                logger.LogWarning("Failed to wait for ffmpeg process to exit");
+            }
         }
     }
 
@@ -466,9 +520,11 @@ public class Player(
 
         long totalBytesRead = 0;
 
+        logger.LogInformation("Starting audio copy");
         while (true)
         {
             var bytesRead = await source.ReadAsync(buffer, cancellationToken);
+            logger.LogInformation("Read {BytesRead} bytes", bytesRead);
 
             if (bytesRead <= 0)
                 break;
@@ -519,6 +575,7 @@ public class Player(
             if (writeIdx <= 0)
                 continue;
 
+            logger.LogInformation("Writing {WriteLen} bytes", writeIdx);
             await destination.WriteAsync(scaled.AsMemory(0, writeIdx), cancellationToken);
         }
     }
@@ -570,12 +627,15 @@ public class Player(
                 logger.LogWarning("ffmpeg[{File}]: {Line}", Path.GetFileName(filePath), e.Data);
         };
         process.BeginErrorReadLine();
+        
+        logger.LogInformation("Created ffmpeg process for {File} (pid {Pid})", Path.GetFileName(filePath), process.Id);
 
         return process;
     }
 
     public ValueTask DisposeAsync()
     {
+        logger.LogInformation("Disposing of player for guild {GuildId}", GuildId);
         // Idempotent: DisconnectAsync (which calls this) can run more than once in edge
         // cases - e.g., a "leave" command racing with the queue naturally running out.
         if (Interlocked.Exchange(ref _disposed, 1) == 1)
@@ -603,6 +663,7 @@ public class Player(
 
         GC.SuppressFinalize(this);
 
+        logger.LogInformation("Disposed of player for guild {GuildId}", GuildId);
         return ValueTask.CompletedTask;
     }
 }
