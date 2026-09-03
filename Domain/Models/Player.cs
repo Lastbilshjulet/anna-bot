@@ -524,7 +524,6 @@ public class Player(
         while (true)
         {
             var bytesRead = await source.ReadAsync(buffer, cancellationToken);
-            logger.LogInformation("Read {BytesRead} bytes", bytesRead);
 
             if (bytesRead <= 0)
                 break;
@@ -575,7 +574,6 @@ public class Player(
             if (writeIdx <= 0)
                 continue;
 
-            logger.LogInformation("Writing {WriteLen} bytes", writeIdx);
             await destination.WriteAsync(scaled.AsMemory(0, writeIdx), cancellationToken);
         }
     }
