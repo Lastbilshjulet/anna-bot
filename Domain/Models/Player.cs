@@ -55,6 +55,7 @@ public class Player(
     private double? _pendingResumeOffsetSeconds;
     
     private volatile bool _stopLoopRequested;
+    private readonly SemaphoreSlim _reconnectLock = new(1, 1);
 
     public readonly SongQueue Queue = new(availableSongs);
     public ulong GuildId { get; } = guildId;
@@ -293,6 +294,12 @@ public class Player(
             logger.LogWarning("Reconnect() called on an already-disposed player for guild {GuildId}; ignoring.", GuildId);
             return;
         }
+        
+        if (!await _reconnectLock.WaitAsync(0))
+        {
+            logger.LogInformation("Reconnect() already in progress for guild {GuildId}; ignoring duplicate call.", GuildId);
+            return;
+        }
 
         logger.LogInformation("Trying to reconnect");
 
@@ -310,15 +317,29 @@ public class Player(
             return;
 
         logger.LogInformation("Reconnecting to VoiceChannel");
-        try
+
+        IAudioClient? newClient = null;
+        const int maxAttempts = 5;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            _audioClient = await VoiceChannel.ConnectAsync();
+            try
+            {
+                newClient = await VoiceChannel.ConnectAsync();
+                break;
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Voice reconnect attempt {Attempt}/{Max} failed for guild {GuildId}", attempt, maxAttempts, GuildId);
+                if (attempt == maxAttempts)
+                {
+                    logger.LogError("Giving up on voice reconnect for guild {GuildId} after {Max} attempts", GuildId, maxAttempts);
+                    return;
+                }
+                await Task.Delay(TimeSpan.FromSeconds(2 * attempt));
+            }
         }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to reconnect to voice channel for guild {GuildId}", GuildId);
-            return;
-        }
+
+        _audioClient = newClient!;
 
         // Give Discord's voice gateway a moment to be ready to accept audio.
         await Task.Delay(1000);
