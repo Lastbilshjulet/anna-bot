@@ -86,7 +86,11 @@ public class Player(
         _playingTask = Task.Run(async () =>
         {
             try
-            {
+            {        
+                // Reset for this generation of the loop. Reconnect() sets this to true to force
+                // the *previous* loop to exit; without resetting it here, the new loop it starts
+                // right afterward would immediately see it as still true and stop after one song.
+                _stopLoopRequested = false;
                 do
                 {
                     Volume = musicConfiguration.BaseVolume;
@@ -179,6 +183,7 @@ public class Player(
                     }
                     finally
                     {
+                        logger.LogInformation("Playback finally for guild {GuildId}", GuildId);
                         lock (_lock)
                         {
                             _currentSongCts?.Dispose();
@@ -190,6 +195,7 @@ public class Player(
                         // so it's reset on every exit path, including `break` - a bare statement
                         // after the finally block is skipped when a break inside the catch fires.
                         IsPlaying = false;
+                        logger.LogInformation("{IsPlaying}, {StopLoopRequested} after finally for guild {GuildId}", IsPlaying, _stopLoopRequested, GuildId);
                     }
                 } while (!_stopLoopRequested);
             }
