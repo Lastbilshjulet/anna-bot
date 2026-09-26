@@ -70,6 +70,7 @@ public class DiscordBot(
         });
     }
 
+/*
     private async Task RemoveGuildCommands(ulong guildId)
     {
         var commands = await client.GetGuild(guildId).GetApplicationCommandsAsync();
@@ -79,6 +80,7 @@ public class DiscordBot(
             logger.LogInformation("Deleted guild command: {CommandName} from {BotName}, and {Guild}", command.Name, discordConfig.Value.BotName, guildId);
         }
     }
+*/
 
     private async Task RemoveGlobalCommands()
     {
@@ -94,15 +96,16 @@ public class DiscordBot(
     {
         if (msg.Exception != null)
         {
-            logger.LogError(msg.Exception, "{BotName}: An exception was thrown from the discord client", discordConfig.Value.BotName);
-            if (msg.Exception is WebSocketException && msg.Exception.Message.Contains("WebSocket connection was closed"))
+            logger.LogError(msg.Exception, "{BotName}: {Source} An exception was thrown from the discord client", discordConfig.Value.BotName, msg.Source);
+            if ((msg.Exception is WebSocketException && msg.Exception.Message.Contains("WebSocket connection was closed"))
+                || msg.Exception is GatewayReconnectException && msg.Exception.Message.Contains("Server requested a reconnect"))
             {
                 await playerState.ReconnectPlayers();
             }
         }
         
         if (msg.Message != null)
-            logger.Log(TranslateLogLevel(msg.Severity), "{BotName}: {ErrorMessage}", discordConfig.Value.BotName, msg.Message);
+            logger.Log(TranslateLogLevel(msg.Severity), "{BotName}: {Source} - {ErrorMessage}", discordConfig.Value.BotName, msg.Source, msg.Message);
     }
 
     private static LogLevel TranslateLogLevel(LogSeverity severity)

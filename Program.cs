@@ -20,7 +20,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 using SpotifyAPI.Web;
 using SpotifyAPI.Web.Auth;
-using SpotifyAPI.Web.Http;
 using YoutubeExplode;
 
 var envContent = File.ReadAllLines(".env");
@@ -138,5 +137,4 @@ return;
 
 void LogSink(LoggingSeverity severity, string file, int line, string message)
 {
-    // Log nothing
 }

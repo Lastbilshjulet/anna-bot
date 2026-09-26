@@ -17,8 +17,20 @@ public class MessageHelper
     {
         var user = context.User as SocketGuildUser;
         var embed = EmbedBuilder(message, user!);
+
+        RestFollowupMessage? messageSent = null;
+        try
+        {
+            messageSent = await context.Interaction.FollowupAsync(embed: embed.Build(), ephemeral: ephemeral, flags: MessageFlags.SuppressNotification);
+        }
+        catch (Exception)
+        {
+            // ignored
+        }
+
+        if (messageSent == null)
+            return;
         
-        var messageSent = await context.Interaction.FollowupAsync(embed: embed.Build(), ephemeral: ephemeral, flags: MessageFlags.SuppressNotification);
         _ = Task.Run(async () =>
         {
             await Task.Delay(TimeSpan.FromMinutes(1));
@@ -145,6 +157,7 @@ public class MessageHelper
                 .WithEmote(new Emoji("▶️"))
                 .WithStyle(ButtonStyle.Success);
         }
+
         var skipButtonBuilder = new ButtonBuilder("Skip", "SkipSongInteraction")
             .WithEmote(new Emoji("⏭️"))
             .WithStyle(ButtonStyle.Danger);
@@ -178,10 +191,10 @@ public class MessageHelper
         var components = new ComponentBuilderV2()
             .WithContainer(x => x
                 .WithAccentColor(0x0600ff)
-                .WithTextDisplay($"## {title}{(player.Repeat ? " - (🔂)" : "")}{(player.Volume != 0.1f ? $" - (🔊{player.DisplayVolume})" : "")}")
+                .WithTextDisplay($"## {title}{(player.Repeat ? " - (🔂)" : "")}{(Math.Abs(player.Volume - 0.1f) > 0.000000001 ? $" - (🔊{player.DisplayVolume})" : "")}")
                 .WithTextDisplay($"### :notes: [{song.Title} - {song.Artist}]({song.GetYouTubeUrl()}){(string.IsNullOrEmpty(song.SpotifyId) ? "" : $" | [Spotify]({song.GetSpotifyUrl()})")} {song.FormattedDuration()}")
                 .WithTextDisplay($"Requested by: {GetUsername(textChannel.Guild, song)}")
-                .WithSeparator( separator => separator
+                .WithSeparator(separator => separator
                     .WithIsDivider(true)
                     .WithSpacing(SeparatorSpacingSize.Small))
                 .WithActionRow([backButtonBuilder, pauseButtonBuilder, repeatButtonBuilder, skipButtonBuilder])

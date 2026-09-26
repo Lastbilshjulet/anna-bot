@@ -4,7 +4,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using anna_bot.Domain.Models;
 using anna_bot.Domain.Models.Configurations;
-using anna_bot.Domain.Services;
 using anna_bot.OutServices.UseCases;
 using Discord.Audio;
 using Discord.WebSocket;

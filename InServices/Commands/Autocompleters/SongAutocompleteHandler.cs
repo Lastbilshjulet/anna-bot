@@ -23,7 +23,8 @@ public class SongAutocompleteHandler(PlayerState playerState, ILogger<SongAutoco
         
             var userInput = autocompleteInteraction.Data.Current.Value as string ?? string.Empty;
 
-            logger.LogInformation("Autocompleting songs from {Query}", userInput);
+            if (!string.IsNullOrEmpty(userInput))
+                logger.LogInformation("Autocompleting songs from {Query}", userInput);
 
             var songs = playerState.GetAllAvailableSongs();
             if (userInput != string.Empty)

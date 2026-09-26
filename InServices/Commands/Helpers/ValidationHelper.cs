@@ -28,12 +28,11 @@ public class ValidationHelper
             return null;
         }
 
-        if (voiceChannel.Id != player.VoiceChannel?.Id)
-        {
-            await MessageHelper.EmbedFollowupAsync(context, "We need to be connected to the same channel for you use this command.", true);
-            return null;
-        }
+        if (voiceChannel.Id == player.VoiceChannel?.Id)
+            return player;
         
-        return player;
+        await MessageHelper.EmbedFollowupAsync(context, "We need to be connected to the same channel for you use this command.", true);
+        
+        return null;
     }
 }

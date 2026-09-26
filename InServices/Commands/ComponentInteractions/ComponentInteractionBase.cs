@@ -25,7 +25,7 @@ public abstract class ComponentInteractionBase(PlayerState playerState, ILogger 
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Unexpected error occurred during component interaction handling.");
+            logger.LogError(ex, "Unexpected error occurred during component interaction handling");
         }
     }
 }

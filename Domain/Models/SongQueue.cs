@@ -13,8 +13,8 @@ public class SongQueue
     public int Count => _queue.Count;
     private int UnPlayedCount => _unPlayed.Count;
     public int HistoryCount => _history.Count;
-    public List<Song> GetQueue => _queue.ToList();
-    public List<Song> GetHistory => _history.ToList();
+    public List<Song> GetQueue => [.. _queue];
+    public List<Song> GetHistory => [.. _history];
     
     public SongQueue(List<Song> existingSongs)
     {
@@ -78,6 +78,7 @@ public class SongQueue
         {
             AddUnplayed(unplayedFromQueue);
         }
+        
         _queue.Clear();
     }
 

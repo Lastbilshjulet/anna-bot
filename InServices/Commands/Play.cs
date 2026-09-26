@@ -54,7 +54,7 @@ public class Play(
             }
             catch (Exception ex)
             {
-                logger.LogError("Error connecting to voice channel: {ExMessage}", ex.Message);
+                logger.LogError(ex, "Error connecting to voice channel");
                 await MessageHelper.EmbedFollowupAsync(Context, "Failed to connect to your voice channel.", true);
                 return;
             }

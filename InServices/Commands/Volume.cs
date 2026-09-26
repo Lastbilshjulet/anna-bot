@@ -17,7 +17,7 @@ public class Volume(
     {
         try
         {
-            await DeferAsync(ephemeral: true);
+            await DeferAsync();
             commandLogger.LogCommandCalled(Context, volume?.ToString() ?? "No volume option");
         
             var player = await ValidationHelper.ValidateAndGetPlayer(Context, logger, playerState);

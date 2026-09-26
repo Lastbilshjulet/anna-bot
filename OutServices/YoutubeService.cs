@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using anna_bot.Domain.Models;
 using anna_bot.Domain.Models.Configurations;
 using anna_bot.OutServices.UseCases;
-using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using YoutubeExplode;

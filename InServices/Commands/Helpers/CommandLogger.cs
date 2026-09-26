@@ -9,12 +9,12 @@ public class CommandLogger<T>(ILogger<T> logger) : ICommandLogger<T>
     {
         if (string.IsNullOrEmpty(option))
         {
-            logger.LogInformation("{Command} called by {UserName} ({UserId}) in guild {GuildName} ({GuildId}).", 
+            logger.LogInformation("{Command} called by {UserName} ({UserId}) in guild {GuildName} ({GuildId})", 
                 typeof(T).Name, context.User.Username, context.User.Id, context.Guild.Name, context.Guild.Id);
         }
         else
         {
-            logger.LogInformation("{Command} - {Option} called by {UserName} ({UserId}) in guild {GuildName} ({GuildId}).", 
+            logger.LogInformation("{Command} - {Option} called by {UserName} ({UserId}) in guild {GuildName} ({GuildId})", 
                 typeof(T).Name, option, context.User.Username, context.User.Id, context.Guild.Name, context.Guild.Id);
         }
     }

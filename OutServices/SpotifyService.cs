@@ -53,15 +53,15 @@ public partial class SpotifyService(
         }
         catch (APIUnauthorizedException)
         {
-            logger.LogError("Spotify auth failed.");
+            logger.LogError("Spotify auth failed");
         }
         catch (APITooManyRequestsException)
         {
-            logger.LogError("Sent too many requests to spotify.");
+            logger.LogError("Sent too many requests to spotify");
         }
-        catch (APIException exc)
+        catch (APIException ex)
         {
-            logger.LogError("Failed request to spotify. Message: {ExcMessage}", exc.Message);
+            logger.LogError(ex, "Failed request to spotify");
         }
         
         return null;
@@ -106,10 +106,10 @@ public partial class SpotifyService(
 
         return (from pattern 
                 in patterns 
-                select Regex.Match(url, pattern) 
-                into match 
-                where match.Success 
-                select match.Groups[1].Value).FirstOrDefault();
+            select Regex.Match(url, pattern) 
+            into match 
+            where match.Success 
+            select match.Groups[1].Value).FirstOrDefault();
     }
 
     public async Task<List<Song>> GetPlaylistAlbumDetails(string uri)
@@ -174,15 +174,15 @@ public partial class SpotifyService(
         }
         catch (APIUnauthorizedException)
         {
-            logger.LogError("Spotify auth failed.");
+            logger.LogError("Spotify auth failed");
         }
         catch (APITooManyRequestsException)
         {
-            logger.LogError("Sent too many requests to spotify.");
+            logger.LogError("Sent too many requests to spotify");
         }
-        catch (APIException exc)
+        catch (APIException ex)
         {
-            logger.LogError("Failed request to spotify. Message: {ExcMessage}", exc.Message);
+            logger.LogError(ex, "Failed request to spotify");
         }
         
         return [];
@@ -192,7 +192,7 @@ public partial class SpotifyService(
     {
         await AddSongToPlaylistAsync([CreateSpotifyTrackString(song.SpotifyId!)]);
         
-        logger.LogInformation("Added song {SongTitle} ({SpotifyId}) to spotify playlist.", song.Title, song.SpotifyId);
+        logger.LogInformation("Added song {SongTitle} ({SpotifyId}) to spotify playlist", song.Title, song.SpotifyId);
     }
 
     private async Task AddSongToPlaylistAsync(List<string> spotifyTrackStrings)
@@ -205,20 +205,20 @@ public partial class SpotifyService(
                 var request = new PlaylistAddItemsRequest(listPart);
                 await spotifyClient.Playlists.AddPlaylistItems(spotifyConfiguration.Value.PlaylistId, request);
         
-                logger.LogInformation("Added {SongCount} songs to spotify playlist.", listPart.Count);
+                logger.LogInformation("Added {SongCount} songs to spotify playlist", listPart.Count);
             }
         }
         catch (APIUnauthorizedException)
         {
-            logger.LogError("Spotify auth failed.");
+            logger.LogError("Spotify auth failed");
         }
         catch (APITooManyRequestsException)
         {
-            logger.LogError("Sent too many requests to spotify.");
+            logger.LogError("Sent too many requests to spotify");
         }
-        catch (APIException exc)
+        catch (APIException ex)
         {
-            logger.LogError("Failed request to spotify. Message: {ExcMessage}", exc.Message);
+            logger.LogError(ex, "Failed request to spotify");
         }
     }
 
