@@ -26,7 +26,6 @@ public class Player(
     ILogger<Player> logger) : IAsyncDisposable
 {
     private IAudioClient _audioClient = audioClient;
-    private readonly Lock _lock = new();
     private CancellationTokenSource _lifetimeCts = new();
 
     private CancellationTokenSource? _currentSongCts;
@@ -34,7 +33,6 @@ public class Player(
     private Task _playingTask = Task.CompletedTask;
 
     private Song? _lastPlayedSong;
-    private double _lastPlaybackPositionSeconds;
     private bool _isReconnecting;
     
     public ulong GuildId => guildId;
@@ -47,6 +45,8 @@ public class Player(
     private bool IsPaused { get; set; }
 
     public Song? CurrentSong { get; private set; }
+    public double CurrentTime { get; private set; }
+
     public float Volume { get; set; } = musicConfiguration.BaseVolume;
     public bool Repeat { get; private set; }
 
@@ -113,7 +113,7 @@ public class Player(
 
                 _lastPlayedSong = CurrentSong;
                 if (!_isReconnecting)
-                    _lastPlaybackPositionSeconds = 0;
+                    CurrentTime = 0;
 
                 try
                 {
@@ -124,7 +124,7 @@ public class Player(
                     _currentMessage = await MessageHelper.EmbedSendMessageAsync(this, TextChannel!, CurrentSong);
 
                     songDbService.IncreasePlayAmount(CurrentSong);
-                    await StreamAudioFromFile(songPath, _lastPlaybackPositionSeconds, _currentSongCts.Token);
+                    await StreamAudioFromFile(songPath, CurrentTime, _currentSongCts.Token);
                 }
                 catch (OperationCanceledException)
                 {
@@ -136,6 +136,7 @@ public class Player(
                 }
                 finally
                 {
+                    await DeleteMessageAsync();
                     IsPlaying = false;
                     _currentSongCts?.Dispose();
                     _currentSongCts = null;
@@ -373,7 +374,7 @@ public class Player(
                 break;
 
             totalBytesRead += bytesRead;
-            _lastPlaybackPositionSeconds = baseOffsetSeconds + (double)totalBytesRead / 192000;
+            CurrentTime = baseOffsetSeconds + (double)totalBytesRead / 192000;
 
             await WaitIfPausedAsync(cancellationToken);
 

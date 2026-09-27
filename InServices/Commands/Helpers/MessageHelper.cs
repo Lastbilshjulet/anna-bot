@@ -13,6 +13,8 @@ namespace anna_bot.InServices.Commands.Helpers;
 
 public class MessageHelper
 {
+    private const int SliderWidth = 40;
+
     public static async Task EmbedFollowupAsync(SocketInteractionContext context, string message, bool ephemeral)
     {
         var user = context.User as SocketGuildUser;
@@ -109,13 +111,42 @@ public class MessageHelper
         var components = SongComponentBuilder(player, textChannel, song);
 
         var messageSent = await textChannel.SendMessageAsync(components: components.Build(), flags: MessageFlags.SuppressNotification);
-        _ = Task.Run(async () =>
+
+        if (CheckSongDurationForCurrentTimeUpdate(song))
         {
-            await Task.Delay(song.Duration);
-            await messageSent.DeleteAsync();
-        });
+            _ = Task.Run(() => UpdateCurrentlyPlayingSongEmbed(player, song, messageSent));
+        }
 
         return messageSent;
+    }
+
+    private static bool CheckSongDurationForCurrentTimeUpdate(Song song)
+    {
+        return song.Duration > TimeSpan.FromSeconds(30) && song.Duration < TimeSpan.FromMinutes(100);
+    }
+
+    private static async Task UpdateCurrentlyPlayingSongEmbed(Player player, Song song, RestUserMessage messageSent)
+    {
+        var updateDelay = Math.Max(song.Duration.TotalSeconds / SliderWidth, 4);
+        
+        do
+        {
+            await Task.Delay(TimeSpan.FromSeconds(updateDelay));
+
+            try
+            {
+                var components = SongComponentBuilder(player, player.TextChannel!, song);
+                await messageSent.ModifyAsync(msg =>
+                {
+                    msg.Components = components.Build();
+                    msg.Flags = MessageFlags.SuppressNotification | MessageFlags.ComponentsV2;
+                });
+            }
+            catch (Exception)
+            {
+                break;
+            }
+        } while (player.CurrentSong == song);
     }
 
     public static async Task EmbedSendMessageAsync(SocketInteractionContext context, Player player, ILogger logger)
@@ -188,18 +219,46 @@ public class MessageHelper
         }
         
         var title = song.IsAutoPlayed ? "Auto-Playing..." : "Now Playing...";
-        var components = new ComponentBuilderV2()
-            .WithContainer(x => x
-                .WithAccentColor(0x0600ff)
-                .WithTextDisplay($"## {title}{(player.Repeat ? " - (🔂)" : "")}{(Math.Abs(player.Volume - 0.1f) > 0.000000001 ? $" - (🔊{player.DisplayVolume})" : "")}")
-                .WithTextDisplay($"### :notes: [{song.Title} - {song.Artist}]({song.GetYouTubeUrl()}){(string.IsNullOrEmpty(song.SpotifyId) ? "" : $" | [Spotify]({song.GetSpotifyUrl()})")} {song.FormattedDuration()}")
-                .WithTextDisplay($"Requested by: {GetUsername(textChannel.Guild, song)}")
-                .WithSeparator(separator => separator
-                    .WithIsDivider(true)
-                    .WithSpacing(SeparatorSpacingSize.Small))
-                .WithActionRow([backButtonBuilder, pauseButtonBuilder, repeatButtonBuilder, skipButtonBuilder])
-                .WithActionRow([volumeDownButtonBuilder, volumeUpButtonBuilder, disconnectButtonBuilder, toggleAutoplayButtonBuilder]));
+
+        var container = new ContainerBuilder()
+            .WithAccentColor(0x0600ff)
+            .WithTextDisplay($"## {title}{(player.Repeat ? " - (🔂)" : "")}{(Math.Abs(player.Volume - 0.1f) > 0.000000001 ? $" - (🔊{player.DisplayVolume})" : "")}")
+            .WithTextDisplay($"### :notes: [{song.Title} - {song.Artist}]({song.GetYouTubeUrl()}){(string.IsNullOrEmpty(song.SpotifyId) ? "" : $" | [Spotify]({song.GetSpotifyUrl()})")} {song.FormattedDuration()}");
+
+        if (CheckSongDurationForCurrentTimeUpdate(song))
+        {
+            container
+                .WithTextDisplay(BuildPlaybackSlider(song.Duration, player.CurrentTime));
+        }
+        
+        container
+            .WithTextDisplay($"Requested by: {GetUsername(textChannel.Guild, song)}")
+            .WithSeparator(separator => separator
+                .WithIsDivider(true)
+                .WithSpacing(SeparatorSpacingSize.Small))
+            .WithActionRow([backButtonBuilder, pauseButtonBuilder, repeatButtonBuilder, skipButtonBuilder])
+            .WithActionRow([
+                volumeDownButtonBuilder, volumeUpButtonBuilder, disconnectButtonBuilder, toggleAutoplayButtonBuilder
+            ]);
+        var components = new ComponentBuilderV2().WithContainer(container);
+        
         return components;
+    }
+
+    private static string BuildPlaybackSlider(TimeSpan songDuration, double songCurrentTime)
+    {
+        var playbackPercentage = Math.Min(songCurrentTime / songDuration.TotalSeconds, 1);
+        var slider = "## ";
+
+        for (var i = 0; i < SliderWidth; i++)
+        {
+            if (playbackPercentage * SliderWidth >= i && playbackPercentage * SliderWidth < i + 1)
+                slider += "⬤";
+            else
+                slider += "━";
+        }
+
+        return slider;
     }
 
     private static string GetUsername(SocketGuild guild, Song song)
