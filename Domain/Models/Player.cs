@@ -85,6 +85,12 @@ public class Player(
                 }
 
                 retries = 5;
+                
+                if (VoiceChannel!.ConnectedUsers.Count <= 1)
+                {
+                    await Task.Delay(10000, _lifetimeCts.Token);
+                    continue;
+                }
 
                 IsPaused = false;
                 Volume = musicConfiguration.BaseVolume;
