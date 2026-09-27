@@ -33,7 +33,7 @@ public class Player(
     private Task _playingTask = Task.CompletedTask;
 
     private Song? _lastPlayedSong;
-    private bool _isReconnecting;
+    private bool _isSeeking;
     
     public ulong GuildId => guildId;
     public SocketVoiceChannel? VoiceChannel { get; private set; }
@@ -112,12 +112,12 @@ public class Player(
                 }
 
                 _lastPlayedSong = CurrentSong;
-                if (!_isReconnecting)
+                if (!_isSeeking)
                     CurrentTime = 0;
 
                 try
                 {
-                    _isReconnecting = false;
+                    _isSeeking = false;
                     IsPlaying = true;
                     _currentSongCts = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCts.Token);
 
@@ -213,6 +213,24 @@ public class Player(
         return Repeat;
     }
 
+    public async Task Seek(int seconds)
+    {
+        await _lifetimeCts.CancelAsync();
+        await _playingTask;
+        
+        _lifetimeCts = new CancellationTokenSource();
+
+        if (_lastPlayedSong != null)
+        {
+            logger.LogInformation("Seeking to {Seconds} seconds in {CurrentSongTitle}", seconds, _lastPlayedSong.Title);
+            CurrentTime = seconds;
+            _isSeeking = true;
+            Queue.Enqueue(_lastPlayedSong);
+            Queue.Cut();
+            PlaySong();
+        }
+    }
+
     public async Task DisconnectAsync()
     {
         await _lifetimeCts.CancelAsync();
@@ -279,7 +297,7 @@ public class Player(
 
         if (_lastPlayedSong != null)
         {
-            _isReconnecting = true;
+            _isSeeking = true;
             Queue.Enqueue(_lastPlayedSong);
             Queue.Cut();
             PlaySong();

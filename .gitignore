@@ -64,3 +64,7 @@ logs/
 
 Songs/
 deploy/
+
+libdave.dll
+libsodium.dll
+opus.dll
