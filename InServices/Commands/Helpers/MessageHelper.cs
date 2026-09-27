@@ -112,17 +112,9 @@ public class MessageHelper
 
         var messageSent = await textChannel.SendMessageAsync(components: components.Build(), flags: MessageFlags.SuppressNotification);
 
-        if (CheckSongDurationForCurrentTimeUpdate(song))
-        {
-            _ = Task.Run(() => UpdateCurrentlyPlayingSongEmbed(player, song, messageSent));
-        }
+        _ = Task.Run(() => UpdateCurrentlyPlayingSongEmbed(player, song, messageSent));
 
         return messageSent;
-    }
-
-    private static bool CheckSongDurationForCurrentTimeUpdate(Song song)
-    {
-        return song.Duration > TimeSpan.FromSeconds(30) && song.Duration < TimeSpan.FromMinutes(100);
     }
 
     private static async Task UpdateCurrentlyPlayingSongEmbed(Player player, Song song, RestUserMessage messageSent)
@@ -223,15 +215,8 @@ public class MessageHelper
         var container = new ContainerBuilder()
             .WithAccentColor(0x0600ff)
             .WithTextDisplay($"## {title}{(player.Repeat ? " - (🔂)" : "")}{(Math.Abs(player.Volume - 0.1f) > 0.000000001 ? $" - (🔊{player.DisplayVolume})" : "")}")
-            .WithTextDisplay($"### :notes: [{song.Title} - {song.Artist}]({song.GetYouTubeUrl()}){(string.IsNullOrEmpty(song.SpotifyId) ? "" : $" | [Spotify]({song.GetSpotifyUrl()})")} {song.FormattedDuration()}");
-
-        if (CheckSongDurationForCurrentTimeUpdate(song))
-        {
-            container
-                .WithTextDisplay(BuildPlaybackSlider(song.Duration, player.CurrentTime));
-        }
-        
-        container
+            .WithTextDisplay($"### :notes: [{song.Title} - {song.Artist}]({song.GetYouTubeUrl()}){(string.IsNullOrEmpty(song.SpotifyId) ? "" : $" | [Spotify]({song.GetSpotifyUrl()})")} {song.FormattedDuration()}")
+            .WithTextDisplay(BuildPlaybackSlider(song.Duration, player.CurrentTime))
             .WithTextDisplay($"Requested by: {GetUsername(textChannel.Guild, song)}")
             .WithSeparator(separator => separator
                 .WithIsDivider(true)
