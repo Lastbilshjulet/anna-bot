@@ -252,4 +252,14 @@ public class MessageHelper
             return song.RequestedBy;
         return guild.GetUser(song.RequestedByUserId)?.DisplayName ?? song.RequestedBy;
     }
+
+    public static async Task EmbedUpdateMessageAsync(Player player, RestUserMessage message)
+    {
+        var components = SongComponentBuilder(player, player.TextChannel!, player.CurrentSong!);
+        await message.ModifyAsync(msg =>
+        {
+            msg.Components = components.Build();
+            msg.Flags = MessageFlags.SuppressNotification | MessageFlags.ComponentsV2;
+        });
+    }
 }

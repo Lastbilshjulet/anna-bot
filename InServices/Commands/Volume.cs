@@ -17,7 +17,7 @@ public class Volume(
     {
         try
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             commandLogger.LogCommandCalled(Context, volume?.ToString() ?? "No volume option");
         
             var player = await ValidationHelper.ValidateAndGetPlayer(Context, logger, playerState);
@@ -29,12 +29,14 @@ public class Volume(
 
             if (!volume.HasValue)
             {
-                await MessageHelper.EmbedFollowupAsync(Context, $"Volume is set to: {player.DisplayVolume}", false);
+                await MessageHelper.EmbedFollowupAsync(Context, $"Volume is set to: {player.DisplayVolume}", true);
                 return;
             }
         
             player.Volume = volume.Value / 100;
-            await MessageHelper.EmbedFollowupAsync(Context, $"Volume is now set to: {player.DisplayVolume}", false);
+            await MessageHelper.EmbedFollowupAsync(Context, $"Volume is now set to: {player.DisplayVolume}", true);
+
+            await player.UpdateSongMessageAsync();
         }
         catch (Exception ex)
         {

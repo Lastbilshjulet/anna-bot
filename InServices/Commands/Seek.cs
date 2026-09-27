@@ -17,7 +17,7 @@ public class Seek(
     {
         try
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             commandLogger.LogCommandCalled(Context);
 
             if (seconds < 0)
@@ -44,7 +44,7 @@ public class Seek(
             
             await player.Seek(seconds);
             
-            await MessageHelper.EmbedFollowupAsync(Context, $"Seeked to {seconds} seconds.", false);
+            await MessageHelper.EmbedFollowupAsync(Context, $"Seeked to {seconds} seconds.", true);
         }
         catch (Exception ex)
         {

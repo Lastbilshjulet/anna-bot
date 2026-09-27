@@ -17,7 +17,7 @@ public class Pause(
     {
         try
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             commandLogger.LogCommandCalled(Context);
         
             var player = await ValidationHelper.ValidateAndGetPlayer(Context, logger, playerState);
@@ -27,7 +27,9 @@ public class Pause(
             var currentSong = player.CurrentSong;
             var isPlaying = player.Pause();
         
-            await MessageHelper.EmbedFollowupAsync(Context, $"{(isPlaying ? "Playing" : "Paused")} {currentSong!.Title} - {currentSong.Artist} | {currentSong.FormattedDuration()}", false);
+            await MessageHelper.EmbedFollowupAsync(Context, $"{(isPlaying ? "Playing" : "Paused")} {currentSong!.Title} - {currentSong.Artist} | {currentSong.FormattedDuration()}", true);
+
+            await player.UpdateSongMessageAsync();
         }
         catch (Exception ex)
         {

@@ -270,6 +270,22 @@ public class Player(
         }
     }
 
+    public async Task UpdateSongMessageAsync()
+    {
+        logger.LogInformation("Updating message");
+        try
+        {
+            if (_currentMessage != null && CurrentSong != null)
+                await MessageHelper.EmbedUpdateMessageAsync(this, _currentMessage);
+            else
+                logger.LogWarning("No message to update, no song playing");
+        }
+        catch (Exception)
+        {
+            logger.LogWarning("Error updating message, probably deleted");
+        }
+    }
+
     public async Task Reconnect()
     {
         logger.LogInformation("Reconnecting player ({GuildId})", GuildId);

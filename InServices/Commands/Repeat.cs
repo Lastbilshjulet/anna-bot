@@ -17,7 +17,7 @@ public class Repeat(
     {
         try
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             commandLogger.LogCommandCalled(Context);
         
             var player = await ValidationHelper.ValidateAndGetPlayer(Context, logger, playerState);
@@ -28,7 +28,9 @@ public class Repeat(
 
             var repeat = player.ToggleRepeat();
         
-            await MessageHelper.EmbedFollowupAsync(Context, $"{(repeat ? "Repeating" : "Unrepeating")} {currentSong!.Title} - {currentSong.Artist} | {currentSong.FormattedDuration()}", false);
+            await MessageHelper.EmbedFollowupAsync(Context, $"{(repeat ? "Repeating" : "Unrepeating")} {currentSong!.Title} - {currentSong.Artist} | {currentSong.FormattedDuration()}", true);
+
+            await player.UpdateSongMessageAsync();
         }
         catch (Exception ex)
         {
