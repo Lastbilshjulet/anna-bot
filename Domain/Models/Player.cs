@@ -86,6 +86,9 @@ public class Player(
 
                 retries = 5;
                 
+                if (_lifetimeCts.IsCancellationRequested)
+                    _lifetimeCts = new CancellationTokenSource();
+                
                 if (VoiceChannel!.ConnectedUsers.Count <= 1)
                 {
                     await Task.Delay(10000, _lifetimeCts.Token);
@@ -303,6 +306,9 @@ public class Player(
         catch (Exception ex)
         {
             logger.LogError(ex, "Error connecting to voice channel during reconnect");
+            
+            await DisconnectAsync();
+            
             return;
         }
         
