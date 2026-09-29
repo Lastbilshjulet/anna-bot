@@ -97,8 +97,7 @@ public class DiscordBot(
         if (msg.Exception != null)
         {
             logger.LogError(msg.Exception, "{BotName}: {Source} An exception was thrown from the discord client", discordConfig.Value.BotName, msg.Source);
-            if ((msg.Exception is WebSocketException && msg.Exception.Message.Contains("WebSocket connection was closed"))
-                || msg.Exception is GatewayReconnectException && msg.Exception.Message.Contains("Server requested a reconnect"))
+            if (msg.Exception is WebSocketException && msg.Exception.Message.Contains("WebSocket connection was closed"))
             {
                 await playerState.ReconnectPlayers();
             }
