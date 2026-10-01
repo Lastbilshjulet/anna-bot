@@ -295,24 +295,38 @@ public class Player(
             logger.LogWarning("No voice channel to reconnect to");
             return;
         }
-
-        try
-        {
-            _audioClient = await VoiceChannel.ConnectAsync();
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error connecting to voice channel during reconnect");
-            
-            await DisconnectAsync();
-            
-            return;
-        }
         
         await _lifetimeCts.CancelAsync();
         await _playingTask;
         
         _lifetimeCts = new CancellationTokenSource();
+        
+        var retries = 0;
+        do
+        {
+            try
+            {
+                await Task.Delay(10000);
+                
+                _audioClient = await VoiceChannel.ConnectAsync();
+                
+                await Task.Delay(1000);
+                
+                break;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed connecting to voice channel during reconnect, try: {Retries}", retries);
+            }
+        } while (retries++ < 5);
+
+        if (_audioClient.ConnectionState != ConnectionState.Connected)
+        {
+            logger.LogError("Not connected after 5 tries, disconnecting");
+            await DisconnectAsync();
+            
+            return;
+        }
 
         if (_lastPlayedSong != null)
         {
