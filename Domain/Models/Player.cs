@@ -323,8 +323,8 @@ public class Player(
 
         if (_audioClient.ConnectionState != ConnectionState.Connected)
         {
-            logger.LogError("Not connected after 5 tries, disconnecting");
-            await DisconnectAsync();
+            logger.LogError("Not connected after 5 tries, restarting");
+            Environment.Exit(1);
             
             return;
         }
