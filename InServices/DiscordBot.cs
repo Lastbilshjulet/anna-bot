@@ -99,10 +99,10 @@ public class DiscordBot(
             logger.LogError(msg.Exception, "{BotName}: {Source} An exception was thrown from the discord client", discordConfig.Value.BotName, msg.Source);
             if (msg.Exception is WebSocketException && msg.Exception.Message.Contains("WebSocket connection was closed"))
             {
-                // await playerState.ReconnectPlayers();
+                await playerState.ReconnectPlayers();
 
-                logger.LogWarning("Restarting bot :(");
-                Environment.Exit(0);
+                // logger.LogWarning("Restarting bot :(");
+                // Environment.Exit(0);
             }
         }
         
