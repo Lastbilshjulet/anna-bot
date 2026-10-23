@@ -289,6 +289,7 @@ public class Player(
     public async Task Reconnect()
     {
         logger.LogInformation("Reconnecting player ({GuildId})", GuildId);
+        await Task.Delay(60000);
 
         if (VoiceChannel == null)
         {
